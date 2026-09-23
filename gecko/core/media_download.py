@@ -93,6 +93,17 @@ def fetch(url, dst_dir, name=None, timeout=30, retries=3, max_mb=0,
     os.makedirs(dst_dir, exist_ok=True)
     if not name:
         name = _safe_name(url)
+
+    # 同名成品已存在 = 上次已完整下载成功。
+    # final 是由 .part 原子改名产生的，存在即代表内容完整，直接跳过；
+    # 不加这个判断的话，_unique 会加 "(1)" 再存一份，重跑一次磁盘就翻倍
+    # （中断后续跑最明显：前半批已落盘，后半批全部重复下载一遍）。
+    existing = os.path.join(dst_dir, name)
+    if os.path.exists(existing):
+        return {"ok": True, "url": url, "path": existing,
+                "bytes": os.path.getsize(existing), "total": os.path.getsize(existing),
+                "resumed": False, "skipped": True, "error": None}
+
     final = _unique(dst_dir, name)
     part = final + ".part"
 

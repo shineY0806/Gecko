@@ -133,7 +133,10 @@ except Exception:  # pragma: no cover
     except Exception:
         adaptive = None
 
-ENGINE_VERSION = "1.7.0"   # 1.7.0：新增图片发现与下载（--image-scan / --image-download），
+ENGINE_VERSION = "1.7.1"   # 1.7.1：修掉媒体/图片重复下载的 bug —— 重跑或中断后续跑时，
+                           # 已完整下载过的文件会被 _unique 加 "(1)" 再存一份，磁盘翻倍。
+                           # 改法：final 由 .part 原子改名而来，存在即代表完整，直接跳过不再重下
+                           # 1.7.0：新增图片发现与下载（--image-scan / --image-download），
                            # 覆盖 img / 懒加载 data-src / srcset 最大候选 / picture / CSS 背景图 / OG 图
                            # 1.6.1：新增媒体下载能力 media_download.py（HLS 分片合并 / 大文件断点续传 / SHA256 校验）
                            # 1.6.0：新增 --media-scan 媒体源发现（m3u8 / mpd / mp4 / webm，只发现不下载）
@@ -3053,9 +3056,10 @@ class RangeCrawler:
                         timeout=max(self.config.timeout, 30),
                         retries=self.config.retries)
                     for r in ok:
-                        log("  已下载 %s %.1f MB%s" % (
+                        log("  %s %s %.1f MB%s" % (
+                            "已有" if r.get("skipped") else "已下载",
                             os.path.basename(r["path"]), r["bytes"] / 1048576.0,
-                            "（续传完成）" if r["resumed"] else ""), "INFO")
+                            "（续传完成）" if r.get("resumed") else ""), "INFO")
                     for r in bad:
                         log("  失败 %s -> %s" % (r["url"][:70], r["error"]), "WARN")
                     self.stats["media_downloaded"] = len(ok)
@@ -3089,9 +3093,10 @@ class RangeCrawler:
                         timeout=max(self.config.timeout, 30),
                         retries=self.config.retries)
                     for r in ok:
-                        log("  已下载 %s %.1f KB%s" % (
+                        log("  %s %s %.1f KB%s" % (
+                            "已有" if r.get("skipped") else "已下载",
                             os.path.basename(r["path"]), r["bytes"] / 1024.0,
-                            "（续传完成）" if r["resumed"] else ""), "INFO")
+                            "（续传完成）" if r.get("resumed") else ""), "INFO")
                     for r in bad[:10]:
                         log("  失败 %s -> %s" % (r["url"][:70], r["error"]), "WARN")
                     if len(bad) > 10:

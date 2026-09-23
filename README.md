@@ -6,9 +6,9 @@
 
 <sub>新手练手项目 · 在 AI 助手协助下完成 · 代码有不成熟之处，多多见谅，欢迎指正</sub>
 
-<kbd>版本 v1.5.0</kbd> <kbd>MIT 许可</kbd> <kbd>Python 3.9+</kbd> <kbd>Windows 可执行版</kbd>
+<kbd>版本 v1.5.1</kbd> <kbd>MIT 许可</kbd> <kbd>Python 3.9+</kbd> <kbd>Windows 可执行版</kbd>
 
-[ **下载 Gecko_v1.5.0_Windows_x64.zip** ](https://github.com/shineY0806/Gecko/releases/latest/download/Gecko_v1.5.0_Windows_x64.zip) · [ 全部版本 ](https://github.com/shineY0806/Gecko/releases) · [ 使用说明 ](docs/使用说明.md)
+[ **下载 Gecko_v1.5.1_Windows_x64.zip** ](https://github.com/shineY0806/Gecko/releases/latest/download/Gecko_v1.5.1_Windows_x64.zip) · [ 全部版本 ](https://github.com/shineY0806/Gecko/releases) · [ 使用说明 ](docs/使用说明.md)
 
 </div>
 
@@ -18,7 +18,7 @@
 
 Windows 用户直接下这个，解压后双击 `Gecko.exe` 就能用，**不需要装 Python**：
 
-> 👉 [Gecko_v1.5.0_Windows_x64.zip](https://github.com/shineY0806/Gecko/releases/latest/download/Gecko_v1.5.0_Windows_x64.zip)（30 MB）
+> 👉 [Gecko_v1.5.1_Windows_x64.zip](https://github.com/shineY0806/Gecko/releases/latest/download/Gecko_v1.5.1_Windows_x64.zip)（30 MB）
 > 全部版本见 [Releases](https://github.com/shineY0806/Gecko/releases)
 
 ---
@@ -89,6 +89,7 @@ python tools/build_exe.py          # 产物在 dist/Gecko/
 
 | 版本 | 说明 |
 |---|---|
+| v1.5.1 | 修掉自愈选择器在「页面没有目标列表」时把 ▼、箭头、分隔条等装饰元素当成记录抽出的问题；逐条模式抽不到不再回退整页凑数 |
 | v1.5.0 | 更名 Gecko；自愈选择器、XHR 接口捕获、代理轮换、Markdown 导出；放开工具层目标限制；修掉分页死锁与 `--pager` 失效 |
 
 版本号同时记录在 `gecko/core/range_crawler.py` 的 `ENGINE_VERSION`，界面与抓取报告里都能看到。

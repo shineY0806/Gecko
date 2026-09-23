@@ -133,7 +133,8 @@ except Exception:  # pragma: no cover
     except Exception:
         adaptive = None
 
-ENGINE_VERSION = "1.5.0"   # 1.5.0：更名 Gecko；自愈选择器 / XHR 接口捕获 / 代理轮换策略 / Markdown 导出；放开工具层目标限制
+ENGINE_VERSION = "1.5.1"   # 1.5.1：修掉自愈选择器在无目标列表页面上抽出 ▼/装饰元素噪声行的问题；
+                           # 1.5.0：更名 Gecko；自愈选择器 / XHR 接口捕获 / 代理轮换策略 / Markdown 导出；放开工具层目标限制
 
 # ---------------------------------------------------------------------------
 # 常量
@@ -1998,16 +1999,39 @@ class RangeCrawler:
 
     # ---- 自定义字段提取 ----
 
-    def _select_nodes(self, soup, selector, scope=None):
+    @staticmethod
+    def _has_content(item):
+        """整条记录是否凑得出 ≥2 个「实质字符」（文字 / 数字）。
+
+        页面压根没有目标列表时，自愈选择器可能把 ▼、箭头、分隔条之类的装饰元素
+        当成「最像的容器」救回来，产出整行噪声。按整条记录累计而非逐字段要求，
+        既滤掉纯装饰行，也不会误伤「某个字段只有一个数字」的正常记录。
+        """
+        n = 0
+        for key, val in item.items():
+            if key == "url" or not val:
+                continue
+            for ch in str(val):
+                if ch.isalnum() or "\u4e00" <= ch <= "\u9fff":
+                    n += 1
+                    if n >= 2:
+                        return True
+        return False
+
+    def _select_nodes(self, soup, selector, scope=None, strict=False, fallback=True):
         """按选择器取节点，失配时交给自愈选择器按元素指纹重定位。
 
         scope 为逐条模式下的容器节点：字段先在容器内找，找不到再退回整页。
+        strict=True 表示这是「记录容器」之类的关键选择器，自愈判定更严格。
         返回 (nodes, healed)；healed=True 表示这次是靠自愈救回来的 —— 记一笔，
         说明网站结构已经变了，配置该更新了。
         """
         try:
             if scope is not None:
-                nodes = scope.select(selector) or soup.select(selector)
+                # fallback=False 时只在容器内找：容器本身是靠自愈救回来的，
+                # 再退回整页取值会让「容器选错」看起来像「字段抽到了」，产出整行噪声
+                nodes = (scope.select(selector) or
+                         (soup.select(selector) if fallback else []))
             else:
                 nodes = soup.select(selector)
         except Exception as exc:
@@ -2018,7 +2042,7 @@ class RangeCrawler:
                 self.adaptive.learn(selector, nodes[0])
             return nodes, False
         if self.adaptive is not None:
-            healed, ok = self.adaptive.heal(soup, selector, scope)
+            healed, ok = self.adaptive.heal(soup, selector, scope, strict=strict)
             if ok and healed:
                 self.adaptive.learn(selector, healed[0])
                 with self.lock:
@@ -2053,7 +2077,9 @@ class RangeCrawler:
                     self.stats["items"] = len(self.items)
                 for it in buckets:
                     self._emit({"type": "item", "item": it})
-                return
+            # 逐条模式抽不到就到此为止：此时页面多半压根没有目标列表（或全是噪声），
+            # 再回退整页取值，几乎必然把 ▼、箭头、分隔条这类装饰元素当成一条记录入库
+            return
 
         item = {"url": url}
         for name, spec in self.config.selectors.items():
@@ -2071,6 +2097,11 @@ class RangeCrawler:
             item[name] = value[:500]
         # 一条记录的字段全空说明选择器没命中，记下来的人就会白等一场
         if any(v for k, v in item.items() if k != "url"):
+            # 整页模式同样可能被自愈救回装饰元素，一并判废
+            if not self._has_content(item):
+                log(f"丢弃自愈噪声记录（页面可能没有目标内容）: {url}",
+                    "DEBUG", self.config.verbose)
+                return
             with self.lock:
                 self.items.append(item)
                 self.stats["items"] = len(self.items)
@@ -2083,9 +2114,12 @@ class RangeCrawler:
         这样"商品名在卡片内、联系电话在页脚"这种混合布局也能一条记录全拿齐。
         """
         try:
-            containers, _ = self._select_nodes(soup, self.config.select_each)
+            # 容器是关键选择器：自愈判定用严格档，防止把装饰元素当列表救回来
+            containers, healed = self._select_nodes(soup, self.config.select_each, strict=True)
         except Exception as exc:
             log(f"--select-each 选择器无效: {exc}", "WARN", self.config.verbose)
+            return []
+        if not containers:
             return []
         out = []
         for node in containers:
@@ -2093,7 +2127,8 @@ class RangeCrawler:
             for name, spec in self.config.selectors.items():
                 selector, attr = _split_selector(spec)
                 try:
-                    found, _ = self._select_nodes(soup, selector, scope=node)
+                    found, _ = self._select_nodes(soup, selector, scope=node,
+                                                  fallback=not healed)
                     if attr:
                         vals = [_attr_value(n, attr) for n in found[:5]]
                     else:
@@ -2103,8 +2138,14 @@ class RangeCrawler:
                     item[name] = ""
                     log(f"选择器无效 '{spec}': {exc}", "WARN", self.config.verbose)
             # 全空的行多半是容器选错或该条目缺字段，入库只会污染数据集
-            if any(v for k, v in item.items() if k != "url"):
-                out.append(item)
+            if not any(v for k, v in item.items() if k != "url"):
+                continue
+            # 整行一个像样的文字都没有（▼、箭头、分隔条之类），留下只会污染数据
+            if not self._has_content(item):
+                log(f"丢弃自愈噪声记录（页面可能没有目标列表）: {url}",
+                    "DEBUG", self.config.verbose)
+                continue
+            out.append(item)
         return out
 
     def _emit(self, event):

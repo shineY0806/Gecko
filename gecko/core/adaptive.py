@@ -156,10 +156,12 @@ class AdaptiveSelector:
         self._order.append(spec)
 
     # ---- 自愈 ----
-    def heal(self, soup, spec, scope=None):
+    def heal(self, soup, spec, scope=None, strict=False):
         """选择器失配时按指纹重新定位。
 
         scope：限定搜索范围的容器（逐条模式传容器节点），None 则全页。
+        strict=True 用于「记录容器」这类关键选择器：只接受与最优候选高度接近的元素
+        （相对门槛 0.85），避免把页面里偶然长得像的装饰元素当成列表救回来。
         返回 (nodes, healed)；healed=False 表示无匹配也无自愈。
         """
         if not self.enabled:
@@ -195,7 +197,8 @@ class AdaptiveSelector:
         # 过滤用绝对阈值（>= threshold）为主、相对最优候选为辅：
         # 列表页里每条文本都不同，若按「最接近第一条」过滤就只剩第一条能救回来，
         # 那正是自愈最该覆盖的场景。0.6 的相对门槛只用来甩掉明显不相关的元素。
+        rel = 0.85 if strict else 0.6
         picked = [c for s, c in scored
-                  if s >= self.threshold and s >= top_score * 0.6][:30]
+                  if s >= self.threshold and s >= top_score * rel][:30]
         self.heal_count += 1
         return picked, True

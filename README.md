@@ -8,6 +8,24 @@
   单文件内核的实战型爬虫工具 · 图形界面 + 命令行双用法 · 无需安装数据库或框架
 </p>
 
+<p align="center">
+  <a href="https://github.com/shineY0806/Gecko/releases/latest">
+    <img src="https://img.shields.io/github/v/release/shineY0806/Gecko?style=flat-square&label=版本" alt="release"></a>
+  <a href="https://github.com/shineY0806/Gecko/releases/latest">
+    <img src="https://img.shields.io/github/downloads/shineY0806/Gecko/total?style=flat-square&label=下载量" alt="downloads"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="license"></a>
+  <img src="https://img.shields.io/badge/python-3.9%2B-blue?style=flat-square" alt="python">
+</p>
+
+---
+
+## 下载
+
+Windows 用户直接下这个，解压后双击 `Gecko.exe` 就能用，**不需要装 Python**：
+
+> 👉 [Gecko_v1.5.0_Windows_x64.zip](https://github.com/shineY0806/Gecko/releases/latest/download/Gecko_v1.5.0_Windows_x64.zip)（30 MB）
+> 全部版本见 [Releases](https://github.com/shineY0806/Gecko/releases)
+
 ---
 
 ## 它是什么
@@ -71,6 +89,15 @@ tools/      打包脚本与演示靶场
 ```bash
 python tools/build_exe.py          # 产物在 dist/Gecko/
 ```
+
+## 版本
+
+| 版本 | 说明 |
+|---|---|
+| v1.5.0 | 更名 Gecko；自愈选择器、XHR 接口捕获、代理轮换、Markdown 导出；放开工具层目标限制；修掉分页死锁与 `--pager` 失效 |
+
+版本号同时记录在 `gecko/core/range_crawler.py` 的 `ENGINE_VERSION`，界面与抓取报告里都能看到。
+发布流程：改版本号 → 提交 → `git tag -a vX.Y.Z` → `gh release create` 附上打包 zip。
 
 ## 使用声明
 

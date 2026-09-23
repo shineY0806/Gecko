@@ -6,9 +6,9 @@
 
 <sub>新手练手项目 · 在 AI 助手协助下完成 · 代码有不成熟之处，多多见谅，欢迎指正</sub>
 
-<kbd>版本 v1.7.0</kbd> <kbd>MIT 许可</kbd> <kbd>Python 3.9+</kbd> <kbd>Windows 可执行版</kbd>
+<kbd>版本 v1.7.1</kbd> <kbd>MIT 许可</kbd> <kbd>Python 3.9+</kbd> <kbd>Windows 可执行版</kbd>
 
-[ **下载 Gecko_v1.7.0_Windows_x64.zip** ](https://github.com/shineY0806/Gecko/releases/latest/download/Gecko_v1.7.0_Windows_x64.zip) · [ 全部版本 ](https://github.com/shineY0806/Gecko/releases) · [ 使用说明 ](docs/使用说明.md)
+[ **下载 Gecko_v1.7.1_Windows_x64.zip** ](https://github.com/shineY0806/Gecko/releases/latest/download/Gecko_v1.7.1_Windows_x64.zip) · [ 全部版本 ](https://github.com/shineY0806/Gecko/releases) · [ 使用说明 ](docs/使用说明.md)
 
 </div>
 
@@ -18,7 +18,7 @@
 
 Windows 用户直接下这个，解压后双击 `Gecko.exe` 就能用，**不需要装 Python**：
 
-> 👉 [Gecko_v1.7.0_Windows_x64.zip](https://github.com/shineY0806/Gecko/releases/latest/download/Gecko_v1.7.0_Windows_x64.zip)（61 MB）
+> 👉 [Gecko_v1.7.1_Windows_x64.zip](https://github.com/shineY0806/Gecko/releases/latest/download/Gecko_v1.7.1_Windows_x64.zip)（60 MB）
 > 全部版本见 [Releases](https://github.com/shineY0806/Gecko/releases)
 
 ---
@@ -89,6 +89,7 @@ python tools/build_exe.py          # 产物在 dist/Gecko/
 
 | 版本 | 说明 |
 |---|---|
+| v1.7.1 | 修复媒体 / 图片重复下载：中断后重跑会把已下完的文件再加 `(1)` 存第二份（`final` 由 `.part` 原子改名而来，存在即代表已完整下载成功），现改为直接跳过；新增 `examples/video_grab_demo.py` 视频抓取教学脚本（发现 → 挑选 → 下载 三段式，默认只扫描不下载） |
 | v1.7.0 | 新增图片发现与下载（`--image-scan` / `--image-download`）：覆盖 `img@src`、懒加载 `data-src` / `data-original`、`srcset` 最大候选、`<picture><source>`、内联 CSS 背景图、OG / Twitter 分享图，产出 `images.csv` / `images.json`；下载复用大文件链路（流式写盘 + 断点续传）。发现默认关、下载默认关 |
 | v1.6.1 | 新增媒体下载能力（`--media-download`）：HLS 分片流自动解析 m3u8 → 并发拉分片 → 合并 mp4；直链大文件走流式写盘 + 断点续传 + SHA256 校验。1GB 实测内存恒定 60MB |
 | v1.6.0 | 新增 `--media-scan` 媒体源发现：识别页面里的 m3u8 / mpd / mp4 / webm 等视频音频地址，产出 `media.csv` / `media.json`。**只做发现、不做下载**，拿地址后用什么工具下由使用者决定 |

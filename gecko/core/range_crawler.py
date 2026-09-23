@@ -133,7 +133,8 @@ except Exception:  # pragma: no cover
     except Exception:
         adaptive = None
 
-ENGINE_VERSION = "1.5.1"   # 1.5.1：修掉自愈选择器在无目标列表页面上抽出 ▼/装饰元素噪声行的问题；
+ENGINE_VERSION = "1.6.0"   # 1.6.0：新增 --media-scan 媒体源发现（m3u8 / mpd / mp4 / webm，只发现不下载）
+                           # 1.5.1：修掉自愈选择器在无目标列表页面上抽出 ▼/装饰元素噪声行的问题；
                            # 1.5.0：更名 Gecko；自愈选择器 / XHR 接口捕获 / 代理轮换策略 / Markdown 导出；放开工具层目标限制
 
 # ---------------------------------------------------------------------------
@@ -566,6 +567,8 @@ def parse_page(html_text, page_url, config):
     if config.comments:
         comments = [c.strip() for c in re.findall(r"<!--(.*?)-->", html_text, re.S) if c.strip()]
 
+    media = extract_media(soup, html_text, page_url, config) if config.media_scan else []
+
     return {
         "links": links,
         "scripts": scripts,
@@ -575,8 +578,89 @@ def parse_page(html_text, page_url, config):
         "forms": forms,
         "comments": comments,
         "js_urls": js_urls,
+        "media": media,
         "next_pages": list(dict.fromkeys(next_pages)),   # v1.5.0 分页线索
     }
+
+
+# ---------------------------------------------------------------------------
+# v1.6.0 媒体源发现：只做发现，不做下载
+# ---------------------------------------------------------------------------
+# 页面里的视频/音频地址散落在 <video>/<source>、内联脚本硬编码的字符串、
+# 以及播放器 iframe 里。这里把它们汇总成一张清单（media.csv / media.json），
+# 拿到地址后用什么下载是使用者自己的事——Gecko 只负责把源找出来。
+MEDIA_ABS_RE = re.compile(
+    r"""https?://[^\s"'<>\\)\]}]+?\.(?:m3u8|mpd|mp4|m4v|webm|flv|mov|m4a|aac|mp3|wav|ogg)""",
+    re.I)
+MEDIA_REL_RE = re.compile(
+    r"""["'(](?P<url>/[^\s"'<>\\)\]}]+?\.(?:m3u8|mpd|mp4|m4v|webm|flv|mov|m4a|aac|mp3))""",
+    re.I)
+MEDIA_TAG_ATTRS = ("src", "data-src", "data-video", "data-url", "data-hls",
+                   "data-mp4", "data-playlist", "data-source")
+
+
+def _media_kind(url):
+    """按扩展名判断媒体源类型：hls / dash / file / segment / audio。"""
+    path = urlparse(url).path.lower()
+    if ".m3u8" in path:
+        return "hls"
+    if ".mpd" in path:
+        return "dash"
+    if re.search(r"\.(mp4|webm|flv|mov|m4v)$", path):
+        return "file"
+    if re.search(r"\.(ts|m4s)$", path):
+        return "segment"
+    if re.search(r"\.(mp3|m4a|aac|wav|ogg)$", path):
+        return "audio"
+    return "other"
+
+
+def extract_media(soup, html_text, page_url, config):
+    """从页面里识别媒体源地址，返回 [{url, type, source, page, title}]。"""
+    found = {}
+
+    def add(raw, where, title=""):
+        if not raw:
+            return
+        raw = str(raw).strip().strip("'\"").replace("\\/", "/")
+        if not raw or raw.startswith("data:"):
+            return
+        norm = normalize_url(raw, page_url, config.ignore_params)
+        if not norm:
+            return
+        kind = _media_kind(norm)
+        if kind == "other":
+            return
+        cur = found.get(norm)
+        if cur is None:
+            found[norm] = {"url": norm, "type": kind, "source": where,
+                           "page": page_url, "title": (title or "")[:120]}
+        else:
+            if where not in cur["source"]:
+                cur["source"] = cur["source"] + "," + where
+            if title and not cur["title"]:
+                cur["title"] = title[:120]
+
+    for tag in soup.find_all("video"):
+        title = (tag.get("title") or tag.get("data-title")
+                 or tag.get("aria-label") or "")
+        for attr in MEDIA_TAG_ATTRS:
+            add(tag.get(attr), "video@" + attr, title)
+        for child in tag.find_all(["source", "track"]):
+            add(child.get("src") or child.get("data-src"),
+                child.name + "@src", title)
+
+    for tag in soup.find_all(["audio", "embed"], attrs={"src": True}):
+        for attr in MEDIA_TAG_ATTRS:
+            add(tag.get(attr), tag.name + "@" + attr)
+
+    # 内联脚本里硬编码的播放地址：很多播放器把 m3u8 藏在 JS 变量里
+    for m in MEDIA_ABS_RE.finditer(html_text or ""):
+        add(m.group(0), "js-inline")
+    for m in MEDIA_REL_RE.finditer(html_text or ""):
+        add(m.group("url"), "js-inline")
+
+    return list(found.values())
 
 
 def looks_html(headers, url):
@@ -656,6 +740,7 @@ class Config:
     # —— v4.0 企业级：抓到"可用数据"而非只是一堆 HTML ——
     extract: bool = False          # 结构化提取（JSON-LD / Microdata / Meta / 表格 / 联系方式）
     extract_tables: bool = False   # 额外把 <table> 明细导出（tables.csv / data.db）
+    media_scan: bool = False       # v1.6.0 媒体源发现：识别页面里的 m3u8/mp4/dash 地址（media.csv）
     export: list = field(default_factory=list)   # 导出格式: csv/jsonl/sqlite/xlsx
     dedup: bool = False            # 正文 SHA1 去重：内容相同的页面只入库一次
     pager: int = 0                 # 分页自动扩展层数（0=关闭）：顺着 rel=next / 页码参数多抓 N 页
@@ -997,6 +1082,7 @@ def build_config(src):
         # v4.0 企业级：结构化提取 + 多格式导出 + 分页/增量/去重 + 指纹轮换
         extract=flag("extract", False),
         extract_tables=flag("extract_tables", False),
+        media_scan=flag("media_scan", False),
         export=_parse_export(src.get("export")),
         dedup=flag("dedup", False),
         pager=int(_num(src.get("pager"), 0, 0, 200)),
@@ -1859,6 +1945,7 @@ class RangeCrawler:
         self.discovered = set()    # 所有发现过的 URL（含未抓取的）
         self.pages = []            # 已成功抓取的页面记录
         self.forms = []            # 发现的表单
+        self.media = []            # v1.6.0 发现的媒体源（m3u8 / mpd / mp4 / webm…）
         self.assets = {"scripts": set(), "styles": set(), "frames": set()}
         self.misc_links = []       # canonical / icon / manifest 等
         self.comments = []         # (page, comment)
@@ -1880,6 +1967,7 @@ class RangeCrawler:
             "http_2xx": 0, "http_3xx": 0, "http_4xx": 0, "http_5xx": 0, "errors": 0,
             "cache_hits": 0, "rendered": 0, "items": 0, "challenged": 0,
             "structured": 0, "duplicates": 0, "not_modified": 0, "tables": 0,
+            "media": 0,    # v1.6.0 媒体源发现条数
             # v1.5.0
             "healed": 0,   # 自愈选择器重定位成功的次数
             "xhr": 0,      # 渲染模式捕获到的后台接口条数
@@ -2298,6 +2386,9 @@ class RangeCrawler:
 
             if parsed:
                 self.forms.extend(parsed["forms"])
+                for m in parsed.get("media", []):
+                    self.media.append(m)
+                    events.append({"type": "media", "media": m})
                 self.assets["scripts"].update(parsed["scripts"])
                 self.assets["styles"].update(parsed["styles"])
                 self.assets["frames"].update(parsed["frames"])
@@ -2579,6 +2670,28 @@ class RangeCrawler:
         self.stats["pages"] = len(self.pages)
         self.stats["urls_discovered"] = len(self.discovered)
         self.stats["forms"] = len(self.forms)
+
+        # 同一地址常被多个页面、多种写法重复命中（尤其站内相对路径），按地址合并，
+        # 否则 media.csv 里同一条视频会出现好几行，看着像发现了更多源其实是一个
+        merged_media = {}
+        for m in self.media:
+            cur = merged_media.get(m["url"])
+            if cur is None:
+                cur = dict(m)
+                cur["pages"] = [m["page"]]
+                cur["count"] = 1
+                merged_media[m["url"]] = cur
+            else:
+                for s in (m["source"] or "").split(","):
+                    if s and s not in cur["source"]:
+                        cur["source"] = cur["source"] + "," + s
+                if m["page"] not in cur["pages"]:
+                    cur["pages"].append(m["page"])
+                if m["title"] and not cur["title"]:
+                    cur["title"] = m["title"]
+                cur["count"] += 1
+        self.media = sorted(merged_media.values(), key=lambda x: (x["type"], x["url"]))
+        self.stats["media"] = len(self.media)
         self.stats["js_urls"] = self.js_url_count
         self.stats["cache_hits"] = self.fetcher.cache.hits
         self.stats["rendered"] = self.fetcher.renderer.rendered
@@ -2737,6 +2850,7 @@ class RangeCrawler:
             "stats": self.stats,
             "pages": self.pages,
             "forms": self.forms,
+            "media": self.media,
             "assets": {k: sorted(v) for k, v in self.assets.items()},
             "meta_links": self.misc_links,
             "comments": [{"page": p, "comment": c} for p, c in self.comments],
@@ -2762,6 +2876,19 @@ class RangeCrawler:
             for f in self.forms:
                 writer.writerow([f["page"], f["action"], f["method"],
                                  ";".join(i["name"] for i in f["inputs"])])
+
+        # media.csv / media.json（v1.6.0）：发现的媒体源清单
+        if self.media:
+            with open(os.path.join(self.config.output_dir, "media.csv"), "w",
+                      encoding="utf-8-sig", newline="") as fh:
+                writer = csv.writer(fh)
+                writer.writerow(["类型", "媒体地址", "来源页面", "发现方式", "标题", "命中次数"])
+                for m in self.media:
+                    writer.writerow([m["type"], m["url"], ";".join(m["pages"]),
+                                     m["source"], m["title"], m["count"]])
+            with open(os.path.join(self.config.output_dir, "media.json"), "w",
+                      encoding="utf-8") as fh:
+                json.dump(self.media, fh, ensure_ascii=False, indent=2)
 
         # interesting.txt
         with open(os.path.join(self.config.output_dir, "interesting.txt"), "w", encoding="utf-8") as fh:
@@ -2914,6 +3041,8 @@ class RangeCrawler:
         if self.sitemap_seeds:
             log(f"sitemap 种子: {len(self.sitemap_seeds)}", "INFO")
         log(f"发现表单: {s.get('forms', 0)}", "INFO")
+        if self.media:
+            log(f"发现媒体源: {s.get('media', 0)}（详见 media.csv）", "INFO")
         log(f"HTTP 2xx/3xx/4xx/5xx: {s.get('http_2xx', 0)}/{s.get('http_3xx', 0)}/"
             f"{s.get('http_4xx', 0)}/{s.get('http_5xx', 0)}", "INFO")
         log(f"请求错误: {s.get('errors', 0)}", "INFO")
@@ -3039,6 +3168,9 @@ def build_parser():
                          "每页产出一条宽表记录")
     g4.add_argument("--extract-tables", action="store_true",
                     help="额外导出页面上的 <table> 明细（报价表、参数表、榜单）")
+    g4.add_argument("--media-scan", action="store_true",
+                    help="媒体源发现：识别页面里的视频/音频地址（m3u8 / mpd / mp4 / webm…），"
+                         "只做发现不下载，产出 media.csv 与 media.json")
     g4.add_argument("--export", default="", metavar="FORMATS",
                     help="导出格式，逗号分隔：csv / jsonl / sqlite / xlsx。"
                          "含 sqlite 时边跑边落盘，爬十万页也不撑内存")
@@ -3122,6 +3254,7 @@ def main(argv=None):
         # v4.0
         "extract": args.extract,
         "extract_tables": args.extract_tables,
+        "media_scan": args.media_scan,
         "export": args.export,
         "pager": args.pager,
         "incremental": args.incremental,

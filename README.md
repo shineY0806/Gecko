@@ -9,6 +9,10 @@
 </p>
 
 <p align="center">
+  <sub>新手练手项目 · 在 AI 助手协助下完成 · 代码有不成熟之处，多多见谅，欢迎指正</sub>
+</p>
+
+<p align="center">
   <a href="https://github.com/shineY0806/Gecko/releases/latest">
     <img src="https://img.shields.io/github/v/release/shineY0806/Gecko?style=flat-square&label=版本" alt="release"></a>
   <a href="https://github.com/shineY0806/Gecko/releases/latest">
@@ -98,6 +102,22 @@ python tools/build_exe.py          # 产物在 dist/Gecko/
 
 版本号同时记录在 `gecko/core/range_crawler.py` 的 `ENGINE_VERSION`，界面与抓取报告里都能看到。
 发布流程：改版本号 → 提交 → `git tag -a vX.Y.Z` → `gh release create` 附上打包 zip。
+
+## 关于本项目（写在前面）
+
+> **这是一个新手的练手项目，代码是在 AI 助手的协助下写出来的，多多见谅 🙏**
+
+作者并不是职业程序员，Gecko 从第一行代码起就是边学边做 —— 很多设计是"能用就行"的
+土办法，命名、分层、异常处理里大概率还留着不少不成熟的地方，也可能藏着没被测试覆盖到的 bug。
+
+所以：
+
+- **遇到问题请先别急着骂**，能复现的话欢迎直接提 [Issue](https://github.com/shineY0806/Gecko/issues)，
+  描述清楚目标站点、参数和操作步骤即可；有能力的朋友更是欢迎 PR
+- **AI 生成的代码请带着审视的眼光看**：核心逻辑（尤其是并发、加锁、请求重试这几块）
+  建议自己过一遍再上生产环境
+- 功能上如果与成熟框架（Scrapy、Scrapling、crawl4ai 等）重叠，那些项目在工程质量上更值得信赖；
+  Gecko 的价值在于**开箱即用的图形界面**和**单文件、无框架依赖**这两点
 
 ## 使用声明
 

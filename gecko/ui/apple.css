@@ -1,0 +1,879 @@
+/* ==========================================================================
+   apple.css —— 视觉层 v3「PLAIN · 素白工业」
+   （文件名沿用 apple.css，只为不动打包脚本 webui.py / build_exe.py 里的引用）
+
+   只改外观：不动 HTML 结构、不动一行 JS、不改任何 id / class / 接口。
+   想回到裸控制台样式：删掉 webui.html 里 <link rel="stylesheet" href="/apple.css"> 这一行。
+
+   生效原理：本文件排在 webui.html 内联 <style> 之后加载（也会被 webui.py
+   内联注入到 </head> 前），同级后写者胜，因此无需任何 !important。
+
+   ---------------------------------------------------------------------------
+   定调 PLAIN · 素白工业
+   ---------------------------------------------------------------------------
+   · 受众：在安全靶场里长时间盯控制台的人；老机器 / 弱显卡 / 小内存也要跑得动。
+   · 方向：中性工业 —— 白底、发丝线、等宽数字，靠留白与对齐分堆，不靠颜色分区。
+   · 配色：中性灰阶（约 90%）+ 单一强调色「钢蓝」+ 语义色（只用于状态，不参与构图）。
+   · 字体：全部系统字（Segoe UI / 苹方 / 雅黑 · Consolas 等宽），零下载、断网可用。
+   · 不做：渐变、阴影、模糊、动画、入场特效、装饰性图标、圆角卡片堆叠。
+   · 层次：靠留白 + 对齐 + 字号 / 字重 + 1px 细线，不靠色块。
+   · 兼容：布局只用 block / inline-block / float（IE8+ 渲染一致），
+           不依赖 flex 的 gap、不依赖 grid；不写 accent-color / :focus-visible /
+           min() / inset / backdrop-filter / filter；CSS 变量由 _compat_css.py 兜底。
+   ========================================================================== */
+
+/* ---------- 1. 设计令牌 ---------- */
+:root {
+  /* 表面：页面 #FAFAFA → 卡片 #FFFFFF → 凹陷区 #F4F4F5，靠明度差分三层 */
+  --bg: #FAFAFA;
+  --panel: #FFFFFF;
+  --panel2: #F4F4F5;
+  --panel3: #EDEDF0;
+  --sunken: #F7F7F8;
+
+  /* 线：发丝边框，全站只有三种深浅 */
+  --border: #E2E2E5;
+  --border-soft: #EDEDF0;
+  --border-strong: #C9C9CE;
+
+  /* 文本：四级灰阶，层次靠字重与灰阶，不靠颜色 */
+  --text: #17181A;
+  --text-dim: #44464A;
+  --muted: #6E7176;
+  --muted2: #8E9196;
+
+  /* 强调色：全站唯一，只给「当前位置 / 进行中 / 可点链接」 */
+  --accent: #2B5C9B;
+  --accent-hi: #3A6FB0;
+  --accent-dim: #23497C;
+  --accent-fill: #EDF2F9;
+  --accent-line: #A8BEDA;
+
+  /* 语义色：状态专用（成功 / 提醒 / 失败 / 跳转），低饱和，白底可读 */
+  --ok: #1F7A5F;
+  --warn: #8A6100;
+  --err: #B3261E;
+  --info: #2C5F8A;
+
+  /* 中性键色：主按钮用墨黑，不占用强调色 */
+  --ink: #17181A;
+  --ink-hi: #2E3033;
+
+  /* 填充 */
+  --fill-quiet: #F7F7F8;
+  --fill-hover: #EDEDF0;
+
+  /* 字体：系统默认，绝不联网下载 */
+  --font-sans: "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+               "Helvetica Neue", Arial, sans-serif;
+  --font-mono: Consolas, "Courier New", "Lucida Console", monospace;
+
+  /* 圆角：工业语言里几乎没有圆，最多倒一小角 */
+  --r-sm: 2px;
+  --r-md: 2px;
+
+  /* 间距梯度 */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 24px; --sp-6: 32px;
+}
+
+/* ---------- 2. 基础 ---------- */
+*, *:before, *:after { box-sizing: border-box; }
+
+html { background:#FAFAFA;  background: var(--bg); }
+
+body {
+  margin: 0;
+  padding: 0;
+  background: #FAFAFA; /* fb */
+  background: var(--bg);
+  color: #17181A; /* fb */
+  color: var(--text);
+  font-family: "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif; /* fb */
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-text-size-adjust: 100%;
+}
+
+::selection { background: #DCE6F4; color:#17181A;  color: var(--text); }
+
+a { color:#2B5C9B;  color: var(--accent); }
+
+code {
+  padding: 1px 4px;
+  background: #F7F7F8; /* fb */
+  background: var(--fill-quiet);
+  border: 1px solid #EDEDF0; /* fb */
+  border: 1px solid var(--border-soft);
+  font-family: Consolas, "Courier New", "Lucida Console", monospace; /* fb */
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+/* ---------- 3. 顶栏（sticky 常驻；老内核不认 sticky 就退回普通文档流，不影响功能） ---------- */
+header {
+  display: block;
+  overflow: hidden;                 /* 兜住右浮的工具栏 */
+  position: sticky;
+  top: 0;
+  z-index: 40;                      /* 弹窗 50 / toast 99 在其上 */
+  padding: 10px 24px;
+  border-bottom: 1px solid #E2E2E5; /* fb */
+  border-bottom: 1px solid var(--border);
+  background: #FFFFFF; /* fb */
+  background: var(--panel);
+}
+header h1 {
+  display: inline-block;
+  vertical-align: middle;
+  margin: 0 14px 0 0;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+header h1 b { color:#2B5C9B;  color: var(--accent); font-weight: 700; }
+header .spacer { display: inline-block; width: 0; }
+
+/* 全局主操作区（由侧栏表单底部移入）：输出目录 + 开始 / 停止，滚动长表单时也够得着 */
+.outdir {
+  font-family: Consolas, "Courier New", "Lucida Console", monospace; /* fb */
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: #6E7176; /* fb */
+  color: var(--muted);
+}
+.toolbar { float: right; }
+.toolbar button { vertical-align: middle; }
+.toolbar .outdir {
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 12px;
+}
+
+/* ---------- 4. 布局：左交互 / 右结果，两栏各自滚动、底部对齐 ----------
+   视口化外壳：main 高度 = 视口 - 顶栏 - 页脚，左右两栏填满后在各自栏内滚动，
+   底边永远水平对齐。老内核不认 calc / vh 时退回普通文档流（整页滚动），功能不受影响。 */
+html, body { height: 100%; }
+main {
+  display: block;
+  padding: 16px 24px;
+  height: calc(100vh - 94px);
+  overflow: hidden;             /* 滚动发生在左右两栏内部，栏内 sticky 不受影响 */
+  box-sizing: border-box;
+}
+main:after { content: ""; display: block; clear: both; }
+main > aside.card { float: left; width: 400px; height: 100%; overflow-y: auto; box-sizing: border-box; padding-top: 0; }
+main > section { margin-left: 416px; height: 100%; overflow-y: auto; box-sizing: border-box; }
+
+/* 右栏输出卡：空闲时也撑到底，与左栏底边水平一致 */
+#view-crawl { height: 100%; }
+#view-crawl > .card { min-height: calc(100% - 189px); }
+
+/* 左栏操作条：吸附在左栏滚动区顶部（老内核不认 sticky 时退回普通块，不影响功能） */
+.actionbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  margin: 0 0 12px;
+  padding: 10px;
+  border: 1px solid #E2E2E5; /* fb */
+  border: 1px solid var(--border);
+  background: #FFFFFF; /* fb */
+  background: var(--panel);
+}
+.actionbar button + button { margin-left: 8px; }
+
+/* 折叠分组：原生 details/summary，零 JS；老内核不认 details 时全部展开显示，仅外观退化 */
+details.group {
+  display: block;
+  margin: 0 0 10px;
+  border: 1px solid #EDEDF0; /* fb */
+  border: 1px solid var(--border-soft);
+}
+details.group > summary {
+  display: block;
+  cursor: pointer;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6E7176; /* fb */
+  color: var(--muted);
+  background: #F4F4F5; /* fb */
+  background: var(--panel2);
+  list-style: none;
+}
+details.group > summary::-webkit-details-marker { display: none; }
+details.group > summary:before {
+  content: "+";
+  display: inline-block;
+  width: 12px;
+  margin-right: 6px;
+  color: #8E9196; /* fb */
+  color: var(--muted2);
+  font-weight: 400;
+  text-align: center;
+}
+details.group[open] > summary:before { content: "\2212"; }
+details.group[open] > summary {
+  border-bottom: 1px solid #EDEDF0; /* fb */
+  border-bottom: 1px solid var(--border-soft);
+}
+details.group > .groupbody { padding: 12px; }
+
+
+/* ---------- 5. 卡片 ---------- */
+.card {
+  margin-bottom: 16px;
+  padding: 16px;
+  border: 1px solid #E2E2E5; /* fb */
+  border: 1px solid var(--border);
+  border-radius: 2px; /* fb */
+  border-radius: var(--r-sm);
+  background: #FFFFFF; /* fb */
+  background: var(--panel);
+}
+.card h2 {
+  margin: 0 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #EDEDF0; /* fb */
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  color: #6E7176; /* fb */
+  color: var(--muted);
+  text-transform: none;
+}
+
+/* ---------- 6. 表单 ---------- */
+.field { margin-bottom: 14px; }
+.field label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: #6E7176; /* fb */
+  color: var(--muted);
+}
+.field input[type=text],
+.field input[type=number],
+.field textarea,
+.field select {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid #C9C9CE; /* fb */
+  border: 1px solid var(--border-strong);
+  border-radius: 2px; /* fb */
+  border-radius: var(--r-sm);
+  background: #FFFFFF; /* fb */
+  background: var(--panel);
+  color: #17181A; /* fb */
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.field input:focus,
+.field textarea:focus,
+.field select:focus {
+  border-color: #2B5C9B; /* fb */
+  border-color: var(--accent);
+  outline: 2px solid #A8BEDA; /* fb */
+  outline: 2px solid var(--accent-line);
+}
+.field input::-webkit-input-placeholder,
+.field textarea::-webkit-input-placeholder { color:#8E9196;  color: var(--muted2); }
+.field textarea {
+  min-height: 48px;
+  resize: vertical;
+  font-family: Consolas, "Courier New", "Lucida Console", monospace; /* fb */
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.field select { height: 30px; padding: 4px 6px; }
+.field input[type=file] {
+  width: 100%;
+  padding: 2px 0;
+  border: none;
+  background: none;
+  font-size: 12px;
+  color: #6E7176; /* fb */
+  color: var(--muted);
+}
+
+/* 提示文字 */
+.sub {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #6E7176; /* fb */
+  color: var(--muted);
+}
+
+/* 多列：float + 百分比，不用 grid，也不用 flex 的 gap */
+.row2, .row3, .checks { display: block; overflow: hidden; }
+.row2 > * { float: left; width: 50%; }
+.row3 > * { float: left; width: 33.33%; }
+.row2 > *:nth-child(odd)  { padding-right: 6px; }
+.row2 > *:nth-child(even) { padding-left: 6px; }
+.row3 > *:nth-child(3n+1) { padding-right: 8px; }
+.row3 > *:nth-child(3n+2) { padding-left: 4px; padding-right: 4px; }
+.row3 > *:nth-child(3n)   { padding-left: 8px; }
+
+.checks { margin-top: 2px; }
+.check {
+  display: block;
+  float: left;
+  width: 50%;
+  margin-bottom: 8px;
+  padding-right: 12px;
+  font-size: 13px;
+  color: #17181A; /* fb */
+  color: var(--text);
+  cursor: pointer;
+}
+.check input {
+  width: 15px;
+  height: 15px;
+  margin: 0 6px 0 0;
+  vertical-align: middle;
+}
+
+/* ---------- 7. 按钮：两档尺寸 + 一套状态 ----------
+   32px = 主操作与导航（默认 / primary / danger / 视图切换 / 标签页）
+   28px = 行内操作（.small 工具执行、.ghost 查看/下载/关闭）
+   状态统一：hover 只变浅填充；选中态不响应 hover；disabled 45%；focus 钢蓝描边 */
+button {
+  display: inline-block;
+  padding: 5px 16px;
+  border: 1px solid #C9C9CE; /* fb */
+  border: 1px solid var(--border-strong);
+  border-radius: 2px; /* fb */
+  border-radius: var(--r-sm);
+  background: #FFFFFF; /* fb */
+  background: var(--panel);
+  color: #17181A; /* fb */
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;                /* 20 + 10 + 2 = 32px，全站主档高度 */
+  cursor: pointer;
+}
+button:hover:not(:disabled) { background:#EDEDF0;  background: var(--fill-hover); }
+button:disabled { opacity: .45; cursor: default; }
+button:focus { outline:2px solid #2B5C9B;  outline: 2px solid var(--accent); outline-offset: 1px; }
+
+button.primary {
+  background: #17181A; /* fb */
+  background: var(--ink);
+  border-color: #17181A; /* fb */
+  border-color: var(--ink);
+  color: #FFFFFF;
+}
+button.primary:hover:not(:disabled) {
+  background: #2E3033; /* fb */
+  background: var(--ink-hi);
+  border-color: #2E3033; /* fb */
+  border-color: var(--ink-hi);
+}
+button.danger { color:#B3261E;  color: var(--err); border-color: #D9A9A4; }
+button.danger:hover:not(:disabled) { background: #FBEFEE; }
+
+/* 行内 / 次要操作：查看、下载、关闭 */
+button.ghost { padding: 4px 10px; font-size: 12px; font-weight: 500; line-height: 18px; }
+/* 工具卡执行键：紧凑主操作 */
+button.small { padding: 4px 12px; font-size: 13px; line-height: 18px; }
+
+/* 水印清理结果的下载入口是 <a>，外观与交互对齐 button.ghost */
+a.ghost, a.button {
+  display: inline-block;
+  padding: 4px 10px;
+  border: 1px solid #E2E2E5; /* fb */
+  border: 1px solid var(--border);
+  border-radius: 2px; /* fb */
+  border-radius: var(--r-sm);
+  background: #FFFFFF; /* fb */
+  background: var(--panel);
+  color: #17181A; /* fb */
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  text-decoration: none;
+  cursor: pointer;
+}
+a.ghost:hover, a.button:hover { background:#EDEDF0;  background: var(--fill-hover); }
+a.ghost:focus, a.button:focus { outline:2px solid #2B5C9B;  outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* 按钮组间距统一 8px */
+.btns {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid #EDEDF0; /* fb */
+  border-top: 1px solid var(--border-soft);
+}
+.btns button + button { margin-left: 8px; }
+.toolbar button + button { margin-left: 8px; }
+
+/* ---------- 8. 视图切换（与标签页同为 32px 导航档） ---------- */
+/* 视图切换键吸在右栏滚动区顶部，结果区滚动时仍可切换 */
+.seg {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  margin-bottom: 14px;
+  padding: 8px 0;
+  background: #FAFAFA; /* fb */
+  background: var(--bg);
+}
+.seg button {
+  margin-right: 8px;
+  padding: 5px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #6E7176; /* fb */
+  color: var(--muted);
+  background: #FFFFFF; /* fb */
+  background: var(--panel);
+}
+.seg button.active {
+  color: #FFFFFF;
+  background: #17181A; /* fb */
+  background: var(--ink);
+  border-color: #17181A; /* fb */
+  border-color: var(--ink);
+}
+.seg button.active:hover:not(:disabled) {
+  background: #17181A; /* fb */
+  background: var(--ink);
+  border-color:#17181A;   border-color: var(--ink);         /* 选中态不响应 hover 变色，避免白字配浅底 */
+}
+
+/* ---------- 9. 标签页 / 子面板（display 是功能；下划线是选中态） ---------- */
+.tabs {
+  margin-bottom: 14px;
+  border-bottom: 1px solid #E2E2E5; /* fb */
+  border-bottom: 1px solid var(--border);
+}
+.tabs button {
+  margin: 0 2px -1px 0;
+  padding: 5px 12px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: #6E7176; /* fb */
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+}
+.tabs button:hover:not(:disabled) { background: none; color:#17181A;  color: var(--text); }
+.tabs button.active {
+  color: #2B5C9B; /* fb */
+  color: var(--accent);
+  border-bottom-color: #2B5C9B; /* fb */
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+.tabpane { display: none; }
+.tabpane.active { display: block; }
+.subpane { display: none; }
+.subpane.active { display: block; }
+
+/* ---------- 10. 读数区：一条读数带，靠竖线分格 ---------- */
+.stats {
+  display: block;
+  overflow: hidden;
+  margin-bottom: 14px;
+  border: 1px solid #E2E2E5; /* fb */
+  border: 1px solid var(--border);
+  border-radius: 2px; /* fb */
+  border-radius: var(--r-sm);
+  background: #FFFFFF; /* fb */
+  background: var(--panel);
+  font-size: 0;                      /* 吃掉 inline-block 之间的空白 */
+}
+.stat {
+  display: inline-block;
+  width: 11.11%;
+  padding: 10px 12px;
+  vertical-align: top;
+  border-left: 1px solid #EDEDF0; /* fb */
+  border-left: 1px solid var(--border-soft);
+  font-size: 13px;
+}
+.stat:first-child { border-left: none; }
+.stat .num {
+  font-family: Consolas, "Courier New", "Lucida Console", monospace; /* fb */
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 700;
+  color: #17181A; /* fb */
+  color: var(--text);
+}
+.stat .lbl { margin-top: 2px; font-size: 11px; color:#6E7176;  color: var(--muted); }
+.stat.c-2xx .num { color:#1F7A5F;  color: var(--ok); }
+.stat.c-3xx .num { color:#2C5F8A;  color: var(--info); }
+.stat.c-4xx .num { color:#8A6100;  color: var(--warn); }
+.stat.c-5xx .num { color:#B3261E;  color: var(--err); }
+
+/* ---------- 11. 进度：实心条，无渐变无动画 ---------- */
+.progress { margin-bottom: 14px; }
+.progress .pbar {
+  height: 6px;
+  overflow: hidden;
+  border: 1px solid #E2E2E5; /* fb */
+  border: 1px solid var(--border);
+  border-radius: 0;
+  background: #F4F4F5; /* fb */
+  background: var(--panel2);
+}
+.progress .pfill {
+  width: 0;
+  height: 100%;
+  background: #2B5C9B; /* fb */
+  background: var(--accent);
+  transition: none;                  /* 关掉内联样式里的宽度过渡 */
+}
+.progress .ptxt {
+  margin-top: 5px;
+  font-family: Consolas, "Courier New", "Lucida Console", monospace; /* fb */
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: #6E7176; /* fb */
+  color: var(--muted);
+}
+
+/* ---------- 12. 日志 ---------- */
+.logbox {
+  height: 420px;
+  overflow-y: auto;
+  padding: 10px 12px;
+  border: 1px solid #E2E2E5; /* fb */
+  border: 1px solid var(--border);
+  border-radius: 2px; /* fb */
+  border-radius: var(--r-sm);
+  background: #F7F7F8; /* fb */
+  background: var(--sunken);
+  color: #44464A; /* fb */
+  color: var(--text-dim);
+  font-family: Consolas, "Courier New", "Lucida Console", monospace; /* fb */
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.logbox .l-INFO  { color:#44464A;  color: var(--text-dim); }
+.logbox .l-WARN  { color:#8A6100;  color: var(--warn); }
+.logbox .l-ERROR { color:#B3261E;  color: var(--err); }
+.logbox .l-DEBUG { color:#8E9196;  color: var(--muted2); }
+
+/* ---------- 13. 表格 / 状态徽章 ---------- */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+th, td {
+  padding: 7px 10px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid #EDEDF0; /* fb */
+  border-bottom: 1px solid var(--border-soft);
+  word-break: break-all;
+}
+th {
+  background: #F4F4F5; /* fb */
+  background: var(--panel2);
+  border-bottom: 1px solid #E2E2E5; /* fb */
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 600;
+  color: #6E7176; /* fb */
+  color: var(--muted);
+}
+tr:hover td { background:#F7F7F8;  background: var(--fill-quiet); }
+.mono { font-family:Consolas, "Courier New", "Lucida Console", monospace;  font-family: var(--font-mono); font-size: 12px; }
+input[type=number] { font-family:Consolas, "Courier New", "Lucida Console", monospace;  font-family: var(--font-mono); }
+
+.sc {
+  display: inline-block;
+  padding: 0 6px;
+  border: 1px solid #E2E2E5; /* fb */
+  border: 1px solid var(--border);
+  border-radius: 2px; /* fb */
+  border-radius: var(--r-sm);
+  font-family: Consolas, "Courier New", "Lucida Console", monospace; /* fb */
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+.sc.s2 { color:#1F7A5F;  color: var(--ok);   border-color: #BFD9CF; background: #F1F7F4; }
+.sc.s3 { color:#2C5F8A;  color: var(--info); border-color: #C6D6E4; background: #F0F5FA; }
+.sc.s4 { color:#8A6100;  color: var(--warn); border-color: #E4D5B7; background: #FAF5EA; }
+.sc.s5 { color:#B3261E;  color: var(--err);  border-color: #EBCDC9; background: #FBEFEE; }
+.sc.sx { color:#B3261E;  color: var(--err);  border-color: #EBCDC9; background: #FBEFEE; }
+
+/* ---------- 14. 列表 / 空态 ---------- */
+.listbox {
+  max-height: 420px;
+  overflow-y: auto;
+  border: 1px solid #E2E2E5; /* fb */
+  border: 1px solid var(--border);
+  border-radius: 2px; /* fb */
+  border-radius: var(--r-sm);
+  background: #FFFFFF; /* fb */
+  background: var(--panel);
+}
+.listbox .item {
+  padding: 8px 12px;
+  border-bottom: 1px solid #EDEDF0; /* fb */
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 13px;
+}
+.listbox .item:last-child { border-bottom: none; }
+.listbox .item:hover { background:#F7F7F8;  background: var(--fill-quiet); }
+.listbox .item .sub { margin-top: 2px; }
+
+.empty {
+  padding: 24px;
+  border: 1px solid #EDEDF0; /* fb */
+  border: 1px solid var(--border-soft);
+  background: #FFFFFF; /* fb */
+  background: var(--panel);
+  text-align: center;
+  font-size: 13px;
+  color: #6E7176; /* fb */
+  color: var(--muted);
+}
+
+/* ---------- 15. 报告文件卡 ---------- */
+.files { display: block; overflow: hidden; font-size: 0; }
+.filecard {
+  display: inline-block;
+  width: 280px;
+  margin: 0 10px 10px 0;
+  padding: 12px;
+  vertical-align: top;
+  border: 1px solid #E2E2E5; /* fb */
+  border: 1px solid var(--border);
+  border-radius: 2px; /* fb */
+  border-radius: var(--r-sm);
+  background: #FFFFFF; /* fb */
+  background: var(--panel);
+  font-size: 13px;
+}
+.filecard .fname { font-family:Consolas, "Courier New", "Lucida Console", monospace;  font-family: var(--font-mono); font-size: 12px; word-break: break-all; }
+.filecard .fmeta { margin: 4px 0 10px; font-size: 11px; color:#6E7176;  color: var(--muted); }
+.filecard button + button { margin-left: 8px; }
+
+/* ---------- 16. 工具区 ---------- */
+.toolgrid { display: block; overflow: hidden; }
+.toolgrid > .card { float: left; width: 340px; }
+.toolgrid > .toolout { margin-left: 356px; }
+
+.toolout {
+  max-height: 520px;
+  overflow: auto;
+  padding: 12px 14px;
+  border: 1px solid #E2E2E5; /* fb */
+  border: 1px solid var(--border);
+  border-radius: 2px; /* fb */
+  border-radius: var(--r-sm);
+  background: #FFFFFF; /* fb */
+  background: var(--panel);
+  font-size: 13px;
+}
+.toolout pre {
+  font-family: Consolas, "Courier New", "Lucida Console", monospace; /* fb */
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.kv { overflow: hidden; margin: 4px 0; }
+.kv .k { float: left; width: 110px; font-size: 12px; color:#6E7176;  color: var(--muted); }
+.kv .v {
+  margin-left: 118px;
+  font-family: Consolas, "Courier New", "Lucida Console", monospace; /* fb */
+  font-family: var(--font-mono);
+  font-size: 12px;
+  word-break: break-all;
+}
+.oktag   { color:#1F7A5F;  color: var(--ok); }
+.warntag { color:#8A6100;  color: var(--warn); }
+.errtag  { color:#B3261E;  color: var(--err); }
+.imgout { padding: 10px; text-align: center; }
+.imgout img { max-width: 100%; max-height: 380px; border:1px solid #E2E2E5;  border: 1px solid var(--border); }
+
+/* ---------- 17. 弹窗 / Toast ---------- */
+.modal {
+  display: none;
+  position: fixed;
+  top: 0; right: 0; bottom: 0; left: 0;
+  z-index: 50;
+  overflow: auto;
+  padding: 30px 20px;
+  background: rgba(23, 24, 26, .35);
+}
+.modal.open { display: block; text-align: center; }
+.modal .mbox {
+  width: 980px;
+  max-width: 100%;
+  margin: 0 auto;
+  text-align: left;
+  border: 1px solid #E2E2E5; /* fb */
+  border: 1px solid var(--border);
+  border-radius: 2px; /* fb */
+  border-radius: var(--r-sm);
+  background: #FFFFFF; /* fb */
+  background: var(--panel);
+}
+.modal .mhead {
+  overflow: hidden;
+  padding: 10px 14px;
+  border-bottom: 1px solid #E2E2E5; /* fb */
+  border-bottom: 1px solid var(--border);
+}
+.modal .mhead .mname {
+  float: left;
+  padding-top: 3px;
+  font-family: Consolas, "Courier New", "Lucida Console", monospace; /* fb */
+  font-family: var(--font-mono);
+  font-size: 12px;
+  word-break: break-all;
+}
+.modal .mhead button { float: right; }
+.modal pre {
+  margin: 0;
+  padding: 14px;
+  max-height: 70vh;
+  overflow: auto;
+  font-family: Consolas, "Courier New", "Lucida Console", monospace; /* fb */
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.toast {
+  display: none;
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  z-index: 99;
+  max-width: 80vw;
+  padding: 9px 16px;
+  border: 1px solid #C9C9CE; /* fb */
+  border: 1px solid var(--border-strong);
+  border-radius: 2px; /* fb */
+  border-radius: var(--r-sm);
+  background: #FFFFFF; /* fb */
+  background: var(--panel);
+  color: #17181A; /* fb */
+  color: var(--text);
+  font-size: 13px;
+}
+.toast.show { display: block; }
+.toast.err { color:#B3261E;  color: var(--err); }
+
+/* ---------- 18. 概览可视化 ---------- */
+.ovmeta {
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #EDEDF0; /* fb */
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 12px;
+  color: #6E7176; /* fb */
+  color: var(--muted);
+}
+.ovmeta b { color:#17181A;  color: var(--text); font-weight: 600; }
+.ovmeta .mono { color:#44464A;  color: var(--text-dim); }
+
+.ovcards { overflow: hidden; margin-bottom: 16px; }
+.ovcard {
+  float: left;
+  width: 150px;
+  margin: 0 8px 8px 0;
+  padding: 10px 12px;
+  border: 1px solid #E2E2E5; /* fb */
+  border: 1px solid var(--border);
+  border-radius: 2px; /* fb */
+  border-radius: var(--r-sm);
+  background: #FFFFFF; /* fb */
+  background: var(--panel);
+}
+.ovcard .num { font-family:Consolas, "Courier New", "Lucida Console", monospace;  font-family: var(--font-mono); font-size: 18px; font-weight: 700; }
+.ovcard .lbl { margin-top: 2px; font-size: 11px; color:#6E7176;  color: var(--muted); }
+
+.ovh { margin: 4px 0 8px; font-size: 12px; font-weight: 600; color:#6E7176;  color: var(--muted); }
+.bars { margin-bottom: 16px; }
+.barrow { overflow: hidden; margin-bottom: 6px; font-size: 12px; }
+.barrow .blbl { float: left;  width: 56px; color:#6E7176;  color: var(--muted); }
+.barrow .bval { float: right; width: 56px; text-align: right; color:#44464A;  color: var(--text-dim); }
+.barrow .btrack {
+  display: block;                    /* btrack 本体是 span，不转块级则高度 / 外边距无效 */
+  height: 10px;
+  margin: 4px 62px 3px;
+  border: 1px solid #E2E2E5; /* fb */
+  border: 1px solid var(--border);
+  background: #EDEDF0; /* fb */
+  background: var(--panel3);
+}
+.bfill { display: block; height: 100%; background:#6E7176;  background: var(--muted); }
+.b-2xx { background:#1F7A5F;  background: var(--ok); }
+.b-3xx { background:#2C5F8A;  background: var(--info); }
+.b-4xx { background:#8A6100;  background: var(--warn); }
+.b-5xx { background:#B3261E;  background: var(--err); }
+.b-depth { background:#2B5C9B;  background: var(--accent); }
+
+/* ---------- 19. 页脚 ---------- */
+footer {
+  padding: 12px 24px 20px;
+  border-top: 1px solid #EDEDF0; /* fb */
+  border-top: 1px solid var(--border-soft);
+  font-size: 12px;
+  color: #6E7176; /* fb */
+  color: var(--muted);
+}
+footer b { color:#44464A;  color: var(--text-dim); font-weight: 600; }
+
+/* ---------- 20. 滚动条（只有 webkit 认，不认就退回系统默认，无副作用） ---------- */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background:#F4F4F5;  background: var(--panel2); }
+::-webkit-scrollbar-thumb { background: #C9C9CE; border:2px solid #F4F4F5;  border: 2px solid var(--panel2); }
+::-webkit-scrollbar-thumb:hover { background:#6E7176;  background: var(--muted); }
+
+/* ---------- 21. 响应式：每一档都给出明确落位 ---------- */
+@media (max-width: 1180px) {
+  .stat { width: 16.66%; }          /* 读数带 9 格 → 每行 6 格 */
+}
+
+@media (max-width: 960px) {
+  main { height: auto; overflow: visible; }   /* 窄屏退回整页滚动 */
+  main > aside { float: none; width: auto; height: auto; overflow: visible; }
+  main > section { margin-left: 0; margin-top: 16px; height: auto; overflow: visible; }
+  #view-crawl { height: auto; }
+  #view-crawl > .card { min-height: 0; }
+  .toolgrid > .card { float: none; width: auto; }
+  .toolgrid > .toolout { margin-left: 0; margin-top: 16px; }
+  .stat { width: 20%; }             /* 每行 5 格 */
+  .logbox { height: 300px; }
+  .toolout { max-height: 420px; }
+}
+
+@media (max-width: 640px) {
+  header { padding: 12px 16px; }
+  main { padding: 12px 16px; }
+  footer { padding: 12px 16px 20px; }
+  .toolbar { float: none; display: block; margin-top: 10px; }
+  .toolbar .outdir { display: block; margin: 0 0 8px; }
+  .row2 > *, .row3 > * { float: none; width: 100%; padding-left: 0; padding-right: 0; }
+  .check { width: 100%; padding-right: 0; }
+  .stat { width: 25%; }
+  .filecard { width: 100%; margin-right: 0; }
+}

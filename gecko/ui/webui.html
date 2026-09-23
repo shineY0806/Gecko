@@ -1,0 +1,1715 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gecko</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.ico">
+<style>
+  :root {
+    /* 兜底主题：与 apple.css「PLAIN · 素白工业」取值一致（老内核不认变量时靠它） */
+    --bg: #FAFAFA; --panel: #FFFFFF; --panel2: #F4F4F5; --panel3: #EDEDF0;
+    --sunken: #F7F7F8;
+    --border: #E2E2E5; --border-soft: #EDEDF0; --border-strong: #C9C9CE;
+    --text: #17181A; --text-dim: #44464A; --muted: #6E7176; --muted2: #8E9196;
+    --accent: #2B5C9B; --accent-hi: #3A6FB0; --accent-dim: #23497C;
+    --accent-fill: #EDF2F9; --accent-line: #A8BEDA;
+    --ok: #1F7A5F; --warn: #8A6100; --err: #B3261E; --info: #2C5F8A;
+    --ink: #17181A; --ink-hi: #2E3033;
+    --fill-quiet: #F7F7F8; --fill-hover: #EDEDF0;
+    --font-sans: "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+                 "Helvetica Neue", Arial, sans-serif;
+    --font-mono: Consolas, "Courier New", "Lucida Console", monospace;
+    --r-sm: 2px;
+  }
+  *, *:before, *:after { box-sizing: border-box; }
+  html { background:#FAFAFA;  background: var(--bg); }
+  body {
+    margin: 0; padding: 0;
+    background:#FAFAFA;     background: var(--bg); color:#17181A;  color: var(--text);
+    font-family: "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif; /* fb */
+    font-family: var(--font-sans);
+    font-size: 14px; line-height: 1.6;
+  }
+  a { color:#2B5C9B;  color: var(--accent); }
+
+  /* 顶栏（sticky 常驻；老内核退回普通文档流） */
+  header { display: block; overflow: hidden; position: sticky; top: 0; z-index: 40;
+           padding: 10px 24px;
+           border-bottom:1px solid #E2E2E5;            border-bottom: 1px solid var(--border); background:#FFFFFF;  background: var(--panel); }
+  header h1 { display: inline-block; vertical-align: middle; margin: 0 14px 0 0;
+              font-size: 17px; font-weight: 600; letter-spacing: 0; }
+  header h1 b { color:#2B5C9B;  color: var(--accent); font-weight: 700; }
+  header .spacer { display: inline-block; width: 0; }
+  header .logo { display: inline-block; vertical-align: middle; width: 26px; height: 26px;
+                 margin: 0 8px 2px 0; }
+  header .ver { display: inline-block; vertical-align: middle; margin-left: 8px;
+                font-size: 11px; font-weight: 400; color:#8E9196;  color: var(--muted2);
+                letter-spacing: 0; }
+  .outdir { font-size: 12px; color:#6E7176;  color: var(--muted); }
+  .toolbar { float: right; }
+  .toolbar button { vertical-align: middle; }
+  .toolbar .outdir { display: inline-block; vertical-align: middle; margin-right: 12px; }
+
+  /* 布局：视口化两栏，各自滚动、底部对齐（老内核不认 calc/vh 时退回整页滚动） */
+  html, body { height: 100%; }
+  main { display: block; padding: 16px 24px; height: calc(100vh - 94px); overflow: hidden; box-sizing: border-box; }
+  main:after { content: ""; display: block; clear: both; }
+  main > aside.card { float: left; width: 400px; height: 100%; overflow-y: auto; box-sizing: border-box; padding-top: 0; }
+  main > section { margin-left: 416px; height: 100%; overflow-y: auto; box-sizing: border-box; }
+  #view-crawl { height: 100%; }
+  #view-crawl > .card { min-height: calc(100% - 189px); }
+
+/* 左栏操作条：随滚动吸附在顶栏下方（老内核不认 sticky 时退回普通块，不影响功能） */
+.actionbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  margin: 0 0 12px;
+  padding: 10px;
+  border: 1px solid #E2E2E5; /* fb */
+  border: 1px solid var(--border);
+  background: #FFFFFF; /* fb */
+  background: var(--panel);
+}
+.actionbar button + button { margin-left: 8px; }
+
+/* 折叠分组：原生 details/summary，零 JS；老内核不认 details 时全部展开显示，仅外观退化 */
+details.group {
+  display: block;
+  margin: 0 0 10px;
+  border: 1px solid #EDEDF0; /* fb */
+  border: 1px solid var(--border-soft);
+}
+details.group > summary {
+  display: block;
+  cursor: pointer;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6E7176; /* fb */
+  color: var(--muted);
+  background: #F4F4F5; /* fb */
+  background: var(--panel2);
+  list-style: none;
+}
+details.group > summary::-webkit-details-marker { display: none; }
+details.group > summary:before {
+  content: "+";
+  display: inline-block;
+  width: 12px;
+  margin-right: 6px;
+  color: #8E9196; /* fb */
+  color: var(--muted2);
+  font-weight: 400;
+  text-align: center;
+}
+details.group[open] > summary:before { content: "\2212"; }
+details.group[open] > summary {
+  border-bottom: 1px solid #EDEDF0; /* fb */
+  border-bottom: 1px solid var(--border-soft);
+}
+details.group > .groupbody { padding: 12px; }
+
+  @media (max-width: 960px) {
+    main { height: auto; overflow: visible; }
+    main > aside { float: none; width: auto; height: auto; overflow: visible; }
+    main > section { margin-left: 0; margin-top: 16px; height: auto; overflow: visible; }
+    #view-crawl { height: auto; }
+    #view-crawl > .card { min-height: 0; }
+  }
+
+  /* 卡片 */
+  .card { margin-bottom: 16px; padding: 16px; border:1px solid #E2E2E5;  border: 1px solid var(--border);
+          border-radius: 2px; background:#FFFFFF;  background: var(--panel); }
+  .card h2 { margin: 0 0 12px; padding-bottom: 8px; border-bottom:1px solid #EDEDF0;  border-bottom: 1px solid var(--border-soft);
+             font-size: 12px; font-weight: 600; letter-spacing: .02em; color:#6E7176;  color: var(--muted); }
+
+  /* 表单 */
+  .field { margin-bottom: 14px; }
+  .field label { display: block; margin-bottom: 4px; font-size: 12px; color:#6E7176;  color: var(--muted); }
+  .field input[type=text], .field input[type=number], .field textarea, .field select {
+    width: 100%; padding: 6px 10px; border:1px solid #C9C9CE;  border: 1px solid var(--border-strong);
+    border-radius: 2px; color:#17181A;  color: var(--text);
+    font-family: inherit; font-size: 13px; line-height: 1.5; outline: none;
+  }
+  .field input:focus, .field textarea:focus, .field select:focus {
+    border-color:#2B5C9B;     border-color: var(--accent); outline:2px solid #A8BEDA;  outline: 2px solid var(--accent-line);
+  }
+  .field textarea { min-height: 48px; resize: vertical;
+                    font-family:Consolas, "Courier New", "Lucida Console", monospace;                     font-family: var(--font-mono); font-size: 12px; }
+  .field select { height: 30px; padding: 4px 6px; }
+  .field input[type=file] { width: 100%; padding: 2px 0; border: none; background: none;
+                            font-size: 12px; color:#6E7176;  color: var(--muted); }
+  input[type=number] { font-family:Consolas, "Courier New", "Lucida Console", monospace;  font-family: var(--font-mono); }
+  .sub { margin-top: 4px; font-size: 12px; line-height: 1.6; color:#6E7176;  color: var(--muted); }
+
+  .row2, .row3, .checks { display: block; overflow: hidden; }
+  .row2 > * { float: left; width: 50%; }
+  .row3 > * { float: left; width: 33.33%; }
+  .row2 > *:nth-child(odd)  { padding-right: 6px; }
+  .row2 > *:nth-child(even) { padding-left: 6px; }
+  .row3 > *:nth-child(3n+1) { padding-right: 8px; }
+  .row3 > *:nth-child(3n+2) { padding-left: 4px; padding-right: 4px; }
+  .row3 > *:nth-child(3n)   { padding-left: 8px; }
+  .checks { margin-top: 2px; }
+  .check { display: block; float: left; width: 50%; margin-bottom: 8px; padding-right: 12px;
+           font-size: 13px; color:#17181A;  color: var(--text); cursor: pointer; }
+  .check input { width: 15px; height: 15px; margin: 0 6px 0 0; vertical-align: middle; }
+
+  /* 按钮：32px 主档 / 28px 行内档，状态统一 */
+  button { display: inline-block; padding: 5px 16px; border:1px solid #C9C9CE;  border: 1px solid var(--border-strong);
+           border-radius: 2px; color:#17181A;  color: var(--text);
+           font-family: inherit; font-size: 14px; font-weight: 600; line-height: 20px;
+           cursor: pointer; }
+  button:hover:not(:disabled) { background:#EDEDF0;  background: var(--fill-hover); }
+  button:disabled { opacity: .45; cursor: default; }
+  button:focus { outline:2px solid #2B5C9B;  outline: 2px solid var(--accent); outline-offset: 1px; }
+  button.primary { border-color:#17181A;  border-color: var(--ink); color: #FFFFFF; }
+  button.primary:hover:not(:disabled) { border-color:#2E3033;  border-color: var(--ink-hi); }
+  button.danger { color:#B3261E;  color: var(--err); border-color: #D9A9A4; }
+  button.danger:hover:not(:disabled) { background: #FBEFEE; }
+  button.ghost { padding: 4px 10px; font-size: 12px; font-weight: 500; line-height: 18px; }
+  button.small { padding: 4px 12px; font-size: 13px; line-height: 18px; }
+  a.ghost, a.button { display: inline-block; padding: 4px 10px; border:1px solid #E2E2E5;  border: 1px solid var(--border);
+                      border-radius: 2px; color:#17181A;  color: var(--text);
+                      font-size: 12px; font-weight: 500; line-height: 18px;
+                      text-decoration: none; cursor: pointer; }
+  a.ghost:hover, a.button:hover { background:#EDEDF0;  background: var(--fill-hover); }
+  a.ghost:focus, a.button:focus { outline:2px solid #2B5C9B;  outline: 2px solid var(--accent); outline-offset: 1px; }
+  .btns { margin-top: 18px; padding-top: 14px; border-top:1px solid #EDEDF0;  border-top: 1px solid var(--border-soft); }
+  .btns button + button, .toolbar button + button { margin-left: 8px; }
+
+  /* 视图切换 / 标签页（display 是功能；选中态见下） */
+  .seg { position: sticky; top: 0; z-index: 10; margin-bottom: 14px; padding: 8px 0; background:#FAFAFA;  background: var(--bg); }
+  .seg button { margin-right: 8px; padding: 5px 20px; font-size: 14px; font-weight: 600;
+                color:#6E7176;                 color: var(--muted); background:#FFFFFF;  background: var(--panel); }
+  .seg button.active { color: #FFFFFF; border-color:#17181A;  border-color: var(--ink); }
+  .seg button.active:hover:not(:disabled) { border-color:#17181A;  border-color: var(--ink); }
+  .tabs { margin-bottom: 14px; border-bottom:1px solid #E2E2E5;  border-bottom: 1px solid var(--border); }
+  .tabs button { margin: 0 2px -1px 0; padding: 5px 12px; border: none;
+                 border-bottom: 2px solid transparent; background: none;
+                 color:#6E7176;                  color: var(--muted); font-size: 13px; font-weight: 500; line-height: 20px; }
+  .tabs button:hover:not(:disabled) { background: none; color:#17181A;  color: var(--text); }
+  .tabs button.active { border-bottom-color:#2B5C9B;  border-bottom-color: var(--accent); font-weight: 600; }
+  .tabpane { display: none; }
+  .tabpane.active { display: block; }
+  .subpane { display: none; }
+  .subpane.active { display: block; }
+
+  /* 读数带 */
+  .stats { display: block; overflow: hidden; margin-bottom: 14px; border:1px solid #E2E2E5;  border: 1px solid var(--border);
+           border-radius: 2px; background:#FFFFFF;  background: var(--panel); font-size: 0; }
+  .stat { display: inline-block; width: 11.11%; padding: 10px 12px; vertical-align: top;
+          border-left:1px solid #EDEDF0;           border-left: 1px solid var(--border-soft); font-size: 13px; }
+  .stat:first-child { border-left: none; }
+  .stat .num { font-size: 18px; font-weight: 700; color:#17181A;  color: var(--text); }
+  .stat .lbl { margin-top: 2px; font-size: 11px; color:#6E7176;  color: var(--muted); }
+  .stat.c-2xx .num { color:#1F7A5F;  color: var(--ok); }
+  .stat.c-3xx .num { color:#2C5F8A;  color: var(--info); }
+  .stat.c-4xx .num { color:#8A6100;  color: var(--warn); }
+  .stat.c-5xx .num { color:#B3261E;  color: var(--err); }
+
+  /* 进度 */
+  .progress { margin-bottom: 14px; }
+  .progress .pbar { height: 6px; overflow: hidden; border:1px solid #E2E2E5;  border: 1px solid var(--border);
+                    border-radius: 0; background:#F4F4F5;  background: var(--panel2); }
+  .progress .pfill { width: 0; height: 100%; background:#2B5C9B;  background: var(--accent); transition: none; }
+  .progress .ptxt { margin-top: 5px; font-size: 11px; color:#6E7176;  color: var(--muted); }
+
+  /* 日志 */
+  .logbox { height: 420px; overflow-y: auto; padding: 10px 12px; border:1px solid #E2E2E5;  border: 1px solid var(--border);
+            border-radius: 2px; color:#44464A;  color: var(--text-dim);
+            font-family:Consolas, "Courier New", "Lucida Console", monospace;             font-family: var(--font-mono); font-size: 12px; line-height: 1.7;
+            white-space: pre-wrap; word-break: break-all; }
+  .logbox .l-INFO { color:#44464A;  color: var(--text-dim); }
+  .logbox .l-WARN { color:#8A6100;  color: var(--warn); }
+  .logbox .l-ERROR { color:#B3261E;  color: var(--err); }
+  .logbox .l-DEBUG { color:#8E9196;  color: var(--muted2); }
+
+  /* 表格 / 徽章 */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 7px 10px; text-align: left; vertical-align: top;
+           border-bottom:1px solid #EDEDF0;            border-bottom: 1px solid var(--border-soft); word-break: break-all; }
+  th { border-bottom:1px solid #E2E2E5;  border-bottom: 1px solid var(--border);
+       font-size: 12px; font-weight: 600; color:#6E7176;  color: var(--muted); }
+  tr:hover td { background:#F7F7F8;  background: var(--fill-quiet); }
+  .mono { font-family:Consolas, "Courier New", "Lucida Console", monospace;  font-family: var(--font-mono); font-size: 12px; }
+  .sc { display: inline-block; padding: 0 6px; border:1px solid #E2E2E5;  border: 1px solid var(--border); border-radius: 2px;
+        font-family:Consolas, "Courier New", "Lucida Console", monospace;         font-family: var(--font-mono); font-size: 11px; font-weight: 700; line-height: 1.5; }
+  .sc.s2 { color:#1F7A5F;  color: var(--ok);   border-color: #BFD9CF; background: #F1F7F4; }
+  .sc.s3 { color:#2C5F8A;  color: var(--info); border-color: #C6D6E4; background: #F0F5FA; }
+  .sc.s4 { color:#8A6100;  color: var(--warn); border-color: #E4D5B7; background: #FAF5EA; }
+  .sc.s5 { color:#B3261E;  color: var(--err);  border-color: #EBCDC9; background: #FBEFEE; }
+  .sc.sx { color:#B3261E;  color: var(--err);  border-color: #EBCDC9; background: #FBEFEE; }
+
+  /* 列表 / 空态 */
+  .listbox { max-height: 420px; overflow-y: auto; border:1px solid #E2E2E5;  border: 1px solid var(--border);
+             border-radius: 2px; background:#FFFFFF;  background: var(--panel); }
+  .listbox .item { padding: 8px 12px; border-bottom:1px solid #EDEDF0;  border-bottom: 1px solid var(--border-soft); font-size: 13px; }
+  .listbox .item:last-child { border-bottom: none; }
+  .listbox .item:hover { background:#F7F7F8;  background: var(--fill-quiet); }
+  .listbox .item .sub { margin-top: 2px; }
+  .empty { padding: 24px; background:#FFFFFF;  background: var(--panel);
+           text-align: center; font-size: 13px; color:#6E7176;  color: var(--muted); }
+
+  /* 文件卡 / 工具区 */
+  .files { display: block; overflow: hidden; font-size: 0; }
+  .filecard { display: inline-block; width: 280px; margin: 0 10px 10px 0; padding: 12px;
+              vertical-align: top; border:1px solid #E2E2E5;  border: 1px solid var(--border); border-radius: 2px;
+              background:#FFFFFF;               background: var(--panel); font-size: 13px; }
+  .filecard .fname { font-family:Consolas, "Courier New", "Lucida Console", monospace;  font-family: var(--font-mono); font-size: 12px; word-break: break-all; }
+  .filecard .fmeta { margin: 4px 0 10px; font-size: 11px; color:#6E7176;  color: var(--muted); }
+  .filecard button + button { margin-left: 8px; }
+  .toolgrid { display: block; overflow: hidden; }
+  .toolgrid > .card { float: left; width: 340px; }
+  .toolgrid > .toolout { margin-left: 356px; }
+  .toolout { max-height: 520px; overflow: auto; padding: 12px 14px; border:1px solid #E2E2E5;  border: 1px solid var(--border);
+             border-radius: 2px; background:#FFFFFF;  background: var(--panel); font-size: 13px; }
+  .toolout pre { font-family:Consolas, "Courier New", "Lucida Console", monospace;  font-family: var(--font-mono); font-size: 12px;
+                 white-space: pre-wrap; word-break: break-all; }
+  .kv { overflow: hidden; margin: 4px 0; }
+  .kv .k { float: left; width: 110px; font-size: 12px; color:#6E7176;  color: var(--muted); }
+  .kv .v { margin-left: 118px; font-family:Consolas, "Courier New", "Lucida Console", monospace;  font-family: var(--font-mono); font-size: 12px; word-break: break-all; }
+  .oktag { } .warntag { } .errtag { color:#B3261E;  color: var(--err); }
+  .imgout { padding: 10px; text-align: center; }
+  .imgout img { max-width: 100%; max-height: 380px; border:1px solid #E2E2E5;  border: 1px solid var(--border); }
+
+  /* 弹窗 / Toast */
+  .modal { display: none; position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 50;
+           overflow: auto; padding: 30px 20px; background: rgba(23, 24, 26, .35); }
+  .modal.open { display: block; text-align: center; }
+  .modal .mbox { width: 980px; max-width: 100%; margin: 0 auto; text-align: left;
+                 border:1px solid #E2E2E5;                  border: 1px solid var(--border); border-radius: 2px; background:#FFFFFF;  background: var(--panel); }
+  .modal .mhead { overflow: hidden; padding: 10px 14px; border-bottom:1px solid #E2E2E5;  border-bottom: 1px solid var(--border); }
+  .modal .mhead .mname { float: left; padding-top: 3px; font-family:Consolas, "Courier New", "Lucida Console", monospace;  font-family: var(--font-mono);
+                         font-size: 12px; word-break: break-all; }
+  .modal .mhead button { float: right; }
+  .modal pre { margin: 0; padding: 14px; max-height: 70vh; overflow: auto;
+               font-family:Consolas, "Courier New", "Lucida Console", monospace;                font-family: var(--font-mono); font-size: 12px;
+               white-space: pre-wrap; word-break: break-all; }
+  .toast { display: none; position: fixed; left: 50%; bottom: 28px;
+           transform: translateX(-50%); z-index: 99; max-width: 80vw; padding: 9px 16px;
+           border:1px solid #C9C9CE;            border: 1px solid var(--border-strong); border-radius: 2px;
+           background:#FFFFFF;            background: var(--panel); color:#17181A;  color: var(--text); font-size: 13px; }
+  .toast.show { display: block; }
+  .toast.err { color:#B3261E;  color: var(--err); }
+
+  /* 概览 */
+  .ovmeta { margin-bottom: 12px; padding-bottom: 10px; border-bottom:1px solid #EDEDF0;  border-bottom: 1px solid var(--border-soft);
+            font-size: 12px; color:#6E7176;  color: var(--muted); }
+  .ovmeta b { color:#17181A;  color: var(--text); font-weight: 600; }
+  .ovcards { overflow: hidden; margin-bottom: 16px; }
+  .ovcard { float: left; width: 150px; margin: 0 8px 8px 0; padding: 10px 12px;
+            border:1px solid #E2E2E5;             border: 1px solid var(--border); border-radius: 2px; background:#FFFFFF;  background: var(--panel); }
+  .ovcard .num { font-family:Consolas, "Courier New", "Lucida Console", monospace;  font-family: var(--font-mono); font-size: 18px; font-weight: 700; }
+  .ovcard .lbl { margin-top: 2px; font-size: 11px; color:#6E7176;  color: var(--muted); }
+  .ovh { margin: 4px 0 8px; font-size: 12px; font-weight: 600; color:#6E7176;  color: var(--muted); }
+  .bars { margin-bottom: 16px; }
+  .barrow { overflow: hidden; margin-bottom: 6px; font-size: 12px; }
+  .barrow .blbl { float: left; width: 56px; color:#6E7176;  color: var(--muted); }
+  .barrow .bval { float: right; width: 56px; text-align: right; color:#44464A;  color: var(--text-dim); }
+  .barrow .btrack { display: block; height: 10px; margin: 4px 62px 3px; border: 1px solid #E2E2E5; background:#EDEDF0;  background: var(--panel3); }
+  .bfill { display: block; height: 100%; background:#6E7176;  background: var(--muted); }
+  .b-2xx { } .b-3xx { background:#2C5F8A;  background: var(--info); }
+  .b-4xx { } .b-5xx { background:#B3261E;  background: var(--err); }
+  .b-depth { background:#2B5C9B;  background: var(--accent); }
+
+  /* 滚动条（仅 webkit，不认就退回系统默认） */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background:#F4F4F5;  background: var(--panel2); }
+  ::-webkit-scrollbar-thumb { background: #C9C9CE; border:2px solid #F4F4F5;  border: 2px solid var(--panel2); }
+  ::-webkit-scrollbar-thumb:hover { background:#6E7176;  background: var(--muted); }
+
+  footer { padding: 12px 24px 20px; border-top:1px solid #EDEDF0;  border-top: 1px solid var(--border-soft);
+           font-size: 12px; color:#6E7176;  color: var(--muted); }
+  footer b { color:#44464A;  color: var(--text-dim); font-weight: 600; }
+
+  @media (max-width: 1180px) { .stat { width: 16.66%; } }
+  @media (max-width: 960px) {
+    .toolgrid > .card { float: none; width: auto; }
+    .toolgrid > .toolout { margin-left: 0; margin-top: 16px; }
+    .stat { width: 20%; }
+    .logbox { height: 300px; }
+    .toolout { max-height: 420px; }
+  }
+  @media (max-width: 640px) {
+    header { padding: 12px 16px; }
+    main { padding: 12px 16px; }
+    footer { padding: 12px 16px 20px; }
+    .toolbar { float: none; display: block; margin-top: 10px; }
+    .toolbar .outdir { display: block; margin: 0 0 8px; }
+    .row2 > *, .row3 > * { float: none; width: 100%; padding-left: 0; padding-right: 0; }
+    .check { width: 100%; padding-right: 0; }
+    .stat { width: 25%; }
+    .filecard { width: 100%; margin-right: 0; }
+  }
+</style>
+<!-- 视觉覆盖层：Apple 质感。删掉这一行即回到上方内联的原始样式 -->
+<link rel="stylesheet" href="/apple.css">
+</head>
+<body>
+
+<header>
+  <img src="/gecko_favicon.png" alt="" class="logo" id="brandLogo">
+  <h1>Gecko<b>控制台</b><span class="ver" id="engVer"></span></h1>
+  <span class="pill" id="statusPill"><span class="dot"></span><span id="statusText">空闲</span></span>
+  <span class="spacer"></span>
+  <span class="toolbar">
+    <span class="outdir" id="outDir"></span>
+    <button type="button" class="ghost" id="btnDisc">使用声明</button>
+  </span>
+</header>
+
+<main>
+  <!-- 左侧：爬取配置 -->
+  <aside class="card">
+    <h2>爬取配置</h2>
+    <div class="actionbar">
+      <button type="button" class="primary" id="btnStart">开始爬取</button>
+      <button type="button" class="danger" id="btnStop" disabled>停止</button>
+    </div>
+
+    <details class="group" open>
+      <summary>基础设置</summary>
+      <div class="groupbody">
+        <div class="field">
+          <label>目标 URL *</label>
+          <input type="text" id="cfgUrl" placeholder="http://127.0.0.1:8000" autocomplete="off">
+        </div>
+        <div class="field">
+          <label>输出目录（留空自动生成）</label>
+          <input type="text" id="cfgOutput" placeholder="output_&lt;主机名&gt;" autocomplete="off">
+        </div>
+        <div class="field">
+          <label>URL 清单文件（批量抓取，一行一个地址）</label>
+          <input type="text" id="cfgUrlFile" placeholder="D:\urls.txt" autocomplete="off">
+          <div class="sub">填了它就可以不填上面的目标 URL；配合「爬取深度 = 1」只抓清单里的地址，
+            成百上千个地址只需跑一次</div>
+        </div>
+        <div class="field">
+          <label>抓取方式</label>
+          <select id="cfgRender">
+            <option value="">普通 HTTP 抓取（最快，推荐先用这个）</option>
+            <option value="dynamic">浏览器渲染（能抓 JS 动态内容，较慢）</option>
+            <option value="stealthy">反检测浏览器（过指纹防护，最慢）</option>
+          </select>
+          <div class="sub" id="renderHint">纯 HTTP 抓取（最快）：拿不到 JS 动态生成的内容时再开渲染</div>
+        </div>
+
+        <!-- 浏览器渲染专属参数 -->
+        <div id="advRender" style="display:none">
+          <div class="row2">
+            <div class="field"><label>等待元素出现（CSS 选择器，可留空）</label>
+              <input type="text" id="cfgWaitSelector" placeholder=".list-item" autocomplete="off"></div>
+            <div class="field"><label>&nbsp;</label>
+              <label class="check"><input type="checkbox" id="cfgNetworkIdle"> 等网络空闲再取页面（更完整但更慢）</label></div>
+          </div>
+        </div>
+
+        <div class="row2">
+          <div class="field"><label>爬取深度（0=只抓种子/清单）</label><input type="number" id="cfgDepth" value="3" min="0" max="200"></div>
+          <div class="field"><label>线程数</label><input type="number" id="cfgThreads" value="5" min="1" max="256"></div>
+          <div class="field"><label>最大页面数</label><input type="number" id="cfgMax" value="500" min="1"></div>
+          <div class="field"><label>超时（秒）</label><input type="number" id="cfgTimeout" value="10" min="1" max="600"></div>
+          <div class="field"><label>失败重试次数</label><input type="number" id="cfgRetries" value="2" min="0" max="20"></div>
+          <div class="field"><label>单页读取上限（MB）</label><input type="number" id="cfgBodyMb" value="3" min="1" max="200"></div>
+        </div>
+      </div>
+    </details>
+
+    <details class="group" open>
+      <summary>限速与并发</summary>
+      <div class="groupbody">
+        <div class="field">
+          <label>每域名并发（0=不限，建议 2~5 避免压垮站点）</label>
+          <input type="number" id="cfgPerDomain" value="0" min="0" max="128">
+        </div>
+        <div class="row2">
+          <div class="field"><label>请求间隔（秒，0=不限速）</label><input type="number" id="cfgDelay" value="0" min="0" step="0.1"></div>
+          <div class="field"><label>全局 QPS 上限（0=不限）</label><input type="number" id="cfgQps" value="0" min="0" max="200" step="0.5"></div>
+        </div>
+        <div class="checks">
+          <label class="check"><input type="checkbox" id="cfgAutothrottle"> 自适应限速（站点变慢就自动放慢）</label>
+          <label class="check"><input type="checkbox" id="cfgCheckpoint"> 断点续爬（停了再跑同一配置可继续）</label>
+          <label class="check"><input type="checkbox" id="cfgCache"> 响应缓存（调参数时不重复请求站点）</label>
+        </div>
+      </div>
+    </details>
+
+    <details class="group">
+      <summary>请求与身份（方法 / 后端 / 代理 / 请求头）</summary>
+      <div class="groupbody">
+        <div class="row2">
+          <div class="field"><label>请求方法</label>
+            <select id="cfgMethod">
+              <option value="GET">GET（默认，普通抓取）</option>
+              <option value="POST">POST（提交表单 / 调接口）</option>
+              <option value="PUT">PUT</option>
+              <option value="PATCH">PATCH</option>
+              <option value="DELETE">DELETE</option>
+            </select>
+          </div>
+          <div class="field"><label>请求体（POST 时用）</label>
+            <input type="text" id="cfgData" placeholder="a=1&amp;b=2  或  {&quot;q&quot;:&quot;abc&quot;}" autocomplete="off">
+          </div>
+        </div>
+        <div class="sub" style="margin:-6px 0 10px">请求体以 <code>{</code> 开头时按 JSON 发送并自动带
+          Content-Type: application/json；非 GET 方法建议把「爬取深度」设为 1，避免对发现的链接也用 POST</div>
+        <div class="row2">
+          <div class="field"><label>HTTP 后端</label>
+            <select id="cfgBackend">
+              <option value="auto">自动（可用则伪装浏览器指纹）</option>
+              <option value="curl_cffi">curl_cffi · 浏览器指纹</option>
+              <option value="requests">requests · 传统</option>
+            </select></div>
+          <div class="field"><label>浏览器指纹</label>
+            <select id="cfgImpersonate">
+              <option value="">跟随后端默认（Chrome）</option>
+              <option value="chrome">Chrome</option>
+              <option value="chrome110">Chrome 110</option>
+              <option value="safari">Safari</option>
+              <option value="firefox">Firefox</option>
+              <option value="edge101">Edge 101</option>
+            </select></div>
+        </div>
+        <div class="field">
+          <label>Cookie（可选，登录态）</label>
+          <input type="text" id="cfgCookie" placeholder="PHPSESSID=xxx; security=low" autocomplete="off">
+        </div>
+        <div class="field">
+          <label>代理（可选，单出口，应对 IP 限流）</label>
+          <input type="text" id="cfgProxy" placeholder="http://127.0.0.1:7890" autocomplete="off">
+        </div>
+        <div class="field">
+          <label>代理列表文件（可选，每行一个，自动轮换）</label>
+          <input type="text" id="cfgProxyFile" placeholder="D:/proxies.txt（每行一个，# 开头为注释）" autocomplete="off">
+        </div>
+        <div class="field">
+          <label>代理轮换策略</label>
+          <select id="cfgProxyStrategy">
+            <option value="cyclic">顺序轮换（请求均匀分布，适合稳定代理池）</option>
+            <option value="random">随机轮换（避免被目标按固定序列识别）</option>
+          </select>
+          <div class="checks" style="margin-top:6px">
+            <label class="check"><input type="checkbox" id="cfgProxyEject" checked>
+              失败自动淘汰（同一出口连续失败 3 次即停用，全部失效时回直连）</label>
+          </div>
+        </div>
+        <div class="field">
+          <label>自定义请求头（可选，每行一条，如 Bearer token 登录态）</label>
+          <textarea id="cfgHeaders" placeholder="Authorization: Bearer eyJxxx&#10;X-Requested-With: XMLHttpRequest"></textarea>
+        </div>
+        <div class="field">
+          <label>排除路径正则（可选，每行一条，如 logout）</label>
+          <textarea id="cfgExclude" placeholder="logout"></textarea>
+        </div>
+        <div class="checks">
+          <label class="check"><input type="checkbox" id="cfgNoVerify"> 跳过证书校验</label>
+          <label class="check"><input type="checkbox" id="cfgRotateUa"> 随机轮换浏览器 UA</label>
+          <label class="check"><input type="checkbox" id="cfgRefererAuto"> 自动补站内 Referer</label>
+        </div>
+      </div>
+    </details>
+
+    <details class="group">
+      <summary>提取与导出（结构化 / 自定义字段 / 格式）</summary>
+      <div class="groupbody">
+        <div class="checks">
+          <label class="check"><input type="checkbox" id="cfgExtract"> 结构化提取（JSON-LD / Microdata / OpenGraph / 电话邮箱）</label>
+          <label class="check"><input type="checkbox" id="cfgExtractTables"> 附带导出页面里的表格明细</label>
+          <label class="check"><input type="checkbox" id="cfgDedup"> 正文去重（内容相同的页只入库一次）</label>
+          <label class="check"><input type="checkbox" id="cfgIncremental"> 增量抓取（页面没变就跳过）</label>
+        </div>
+        <div class="field">
+          <label>分页自动扩展页数（0=关闭）</label>
+          <input type="number" id="cfgPager" value="0" min="0" max="200">
+        </div>
+        <div class="field">
+          <label>自定义字段提取（每行一条：字段名=CSS选择器；取属性写 字段=选择器@属性）</label>
+          <textarea id="cfgSelect" rows="2" placeholder="书名=h3 a@title&#10;价格=.price_color"></textarea>
+          <div class="sub">结果写入 items.csv / items.json，不填就不产生这两个文件</div>
+        </div>
+        <div class="field">
+          <label>一条记录的容器（列表页逐项拆分用）</label>
+          <input type="text" id="cfgSelectEach" placeholder="article.product_pod" autocomplete="off">
+          <div class="sub">抓商品/房源/招聘列表时填它，否则一页的 20 条会挤成一行</div>
+        </div>
+        <div class="field">
+          <label>导出格式（勾选，可多选）</label>
+          <div class="checks">
+            <label class="check"><input type="checkbox" id="expCsv" checked> CSV（Excel 可直接打开）</label>
+            <label class="check"><input type="checkbox" id="expXlsx" checked> XLSX（Excel 工作簿）</label>
+            <label class="check"><input type="checkbox" id="expSqlite"> SQLite 数据库（爬得多时选它，边跑边存不占内存）</label>
+            <label class="check"><input type="checkbox" id="expJsonl"> JSONL（每行一条，程序读）</label>
+            <label class="check"><input type="checkbox" id="expMd"> Markdown 表格（喂 LLM / RAG 直接可用）</label>
+          </div>
+          <div class="sub">需要先勾「结构化提取」才有内容可导出</div>
+        </div>
+      </div>
+    </details>
+
+    <details class="group">
+      <summary>v1.5.0 实战增强（自愈 / 接口捕获）</summary>
+      <div class="groupbody">
+        <div class="checks">
+          <label class="check"><input type="checkbox" id="cfgAdaptive" checked>
+            自愈选择器（网站改版后按元素指纹自动重定位失效的选择器）</label>
+          <label class="check"><input type="checkbox" id="cfgXhr" checked>
+            捕获后台接口（浏览器渲染模式下留存 XHR/fetch 的 JSON 响应 → xhr_api.json）</label>
+        </div>
+        <div class="sub">自愈选择器只在配置的 CSS 选择器<strong>一个都匹配不上</strong>时介入，
+          命中后会在日志里提示「自愈重定位」，此时建议同步更新选择器；
+          接口捕获仅在「抓取方式」选了浏览器渲染时生效。</div>
+      </div>
+    </details>
+
+    <details class="group">
+      <summary>抓取范围与杂项</summary>
+      <div class="groupbody">
+        <div class="checks">
+          <label class="check"><input type="checkbox" id="cfgSameHost"> 只抓站内（不跟随站外链接）</label>
+          <label class="check"><input type="checkbox" id="cfgSubdomains"> 允许子域名（已默认放开）</label>
+          <label class="check"><input type="checkbox" id="cfgRobots"> 遵守robots.txt</label>
+          <label class="check"><input type="checkbox" id="cfgFresh"> 忽略历史重新爬</label>
+          <label class="check"><input type="checkbox" id="cfgComments"> 提取HTML注释</label>
+          <label class="check"><input type="checkbox" id="cfgJsUrls" checked> 从内联JS提取接口URL</label>
+          <label class="check"><input type="checkbox" id="cfgSitemap" checked> 解析sitemap.xml作种子</label>
+        </div>
+      </div>
+    </details>
+  </aside>
+
+  <!-- 右侧：功能区 -->
+  <section>
+    <div class="seg">
+      <button type="button" class="active" data-seg="crawl" id="segCrawl">爬取</button>
+      <button type="button" data-seg="tools" id="segTools">反爬对抗</button>
+      <button type="button" data-seg="antic" id="segAntic">防护对抗</button>
+    </div>
+
+    <!-- ===== 视图：爬取 ===== -->
+    <div id="view-crawl">
+      <div class="stats" id="statsRow"></div>
+      <div class="progress">
+        <div class="pbar"><div class="pfill" id="pfill"></div></div>
+        <div class="ptxt" id="ptxt">尚未开始</div>
+      </div>
+      <div class="card">
+          <div class="tabs" id="tabs">
+            <button type="button" data-tab="overview">概览</button>
+            <button type="button" data-tab="log" class="active">实时日志</button>
+          <button type="button" data-tab="pages">页面</button>
+          <button type="button" data-tab="forms">表单</button>
+          <button type="button" data-tab="interesting">敏感路径</button>
+          <button type="button" data-tab="comments">注释</button>
+          <button type="button" data-tab="external">站外引用</button>
+          <button type="button" data-tab="files">报告文件</button>
+        </div>
+        <div class="tabpane" id="pane-overview">
+          <div id="ovBox"><div class="empty">开始爬取后，这里会显示统计概览与分布图</div></div>
+        </div>
+        <div class="tabpane active" id="pane-log">
+          <div class="logbox" id="logbox"></div>
+        </div>
+        <div class="tabpane" id="pane-pages"><div class="listbox" id="pagesBox"></div></div>
+        <div class="tabpane" id="pane-forms"><div class="listbox" id="formsBox"></div></div>
+        <div class="tabpane" id="pane-interesting"><div class="listbox" id="intBox"></div></div>
+        <div class="tabpane" id="pane-comments"><div class="listbox" id="cmtBox"></div></div>
+        <div class="tabpane" id="pane-external"><div class="listbox" id="extBox"></div></div>
+        <div class="tabpane" id="pane-files"><div class="files" id="filesBox"></div></div>
+      </div>
+    </div>
+
+    <!-- ===== 视图：反爬对抗 ===== -->
+    <div id="view-tools" style="display:none">
+      <div class="tabs">
+        <button type="button" class="active" data-sub="font">字体反爬</button>
+        <button type="button" data-sub="decode">文本解码</button>
+        <button type="button" data-sub="water">水印</button>
+        <button type="button" data-sub="auth">鉴权测试</button>
+        <button type="button" data-sub="js">JS接口加密</button>
+      </div>
+
+      <!-- 字体反爬 -->
+      <div class="subpane active" id="sub-font">
+        <div class="toolgrid">
+          <div class="card">
+            <h2>字体反爬 · 参数</h2>
+            <div class="field"><label>目标页面 URL（含 @font-face 的页面）</label>
+              <input type="text" id="fontUrl" placeholder="http://127.0.0.1:8000/antifont.html" autocomplete="off"></div>
+            <div class="field"><label>待解码文本（含乱码/方块字符，可选）</label>
+              <textarea id="fontText" placeholder="复制页面上看到的混淆文本到这里"></textarea></div>
+            <div class="field"><label>参考字体路径（可选，默认自动找 arial.ttf）</label>
+              <input type="text" id="fontRef" placeholder="C:/Windows/Fonts/arial.ttf" autocomplete="off"></div>
+            <div class="field"><label>Cookie（可选）</label>
+              <input type="text" id="fontCookie" placeholder="session=xxx" autocomplete="off"></div>
+            <div class="btns"><button type="button" class="primary small" id="btnFont">分析字体并解码</button></div>
+          </div>
+          <div class="toolout" id="fontOut"><div class="empty">分析结果将显示在这里：字体来源、字形映射表、解码文本</div></div>
+        </div>
+      </div>
+
+      <!-- 文本解码 -->
+      <div class="subpane" id="sub-decode">
+        <div class="toolgrid">
+          <div class="card">
+            <h2>文本混淆解码</h2>
+            <div class="field"><label>输入混淆文本</label>
+              <textarea id="decText" placeholder="&#49;&#50;&#51; 或 \u4F60\u597D 或 ％Ｅ６％　全角字符"></textarea></div>
+            <div class="btns"><button type="button" class="primary small" id="btnDecode">逐级解码</button></div>
+          </div>
+          <div class="toolout" id="decOut"><div class="empty">解码结果：原始 → 各级变换 → 最终结果</div></div>
+        </div>
+      </div>
+
+      <!-- 水印 -->
+      <div class="subpane" id="sub-water">
+        <div class="toolgrid">
+          <div class="card">
+            <h2>隐形水印 · 分析/清理</h2>
+            <div class="field"><label>图片文件</label>
+              <input type="file" id="watFile" accept="image/*"></div>
+            <div class="row2">
+              <div class="field"><label>操作</label>
+                <select id="watAction"><option value="detect">检测水印</option><option value="clean">清理水印</option></select></div>
+              <div class="field"><label>清理方法</label>
+                <select id="watMethod">
+                  <option value="auto">自动</option><option value="lsb_strip">LSB置零</option>
+                  <option value="fft_lowpass">频域低通</option><option value="gaussian">高斯模糊</option>
+                  <option value="median">中值滤波</option><option value="posterize">颜色量化</option>
+                </select></div>
+            </div>
+            <div class="btns"><button type="button" class="primary small" id="btnWater">执行</button></div>
+          </div>
+          <div class="toolout" id="watOut"><div class="empty">水印检测报告或清理结果将显示在这里</div></div>
+        </div>
+      </div>
+
+      <!-- 鉴权测试 -->
+      <div class="subpane" id="sub-auth">
+        <div class="toolgrid">
+          <div class="card">
+            <h2>鉴权（访问控制）测试</h2>
+            <div class="field"><label>目标 URL（付费/受限页面）</label>
+              <input type="text" id="authUrl" placeholder="http://127.0.0.1:8000/pay.html" autocomplete="off"></div>
+            <div class="field"><label>Cookie（登录/付费态，可选）</label>
+              <input type="text" id="authCookie" placeholder="session=xxx; paid=1" autocomplete="off"></div>
+            <div class="row2">
+              <div class="field"><label>请求方法</label>
+                <select id="authMethod"><option value="GET">GET</option><option value="POST">POST</option></select></div>
+              <div class="field"><label>证书校验</label>
+                <select id="authVerify"><option value="0">跳过(自签名)</option><option value="1">校验</option></select></div>
+            </div>
+            <div class="field"><label>POST 附加 JSON 字段（可选）</label>
+              <input type="text" id="authBody" placeholder='{"is_paid": true}' autocomplete="off"></div>
+            <div class="btns"><button type="button" class="primary small" id="btnAuth">执行鉴权差分测试</button></div>
+          </div>
+          <div class="toolout" id="authOut"><div class="empty">匿名 / 登录 / 篡改上下文 的差分结果将显示在这里，标红项需重点人工核实</div></div>
+        </div>
+      </div>
+
+      <!-- JS接口加密 -->
+      <div class="subpane" id="sub-js">
+        <div class="toolgrid">
+          <div class="card">
+            <h2>JS 接口加密</h2>
+            <div class="field"><label>操作</label>
+              <select id="jsAction">
+                <option value="scan">扫描页面JS加密特征</option>
+                <option value="run">用Node执行解密脚本</option>
+                <option value="replay">重放捕获的加密请求</option>
+              </select></div>
+            <div class="field"><label>目标页面 URL（scan 用）</label>
+              <input type="text" id="jsUrl" placeholder="http://127.0.0.1:8000/antifs.html" autocomplete="off"></div>
+            <div class="field"><label>JS 脚本（run 用，定义函数并 console.log/print 结果）</label>
+              <textarea id="jsScript" placeholder="const key='abc'; ...; console.log(result);"></textarea></div>
+            <div class="field"><label>捕获请求 JSON（replay 用，[{"method":"POST","url":"...","data":{}}]）</label>
+              <textarea id="jsCaptures" placeholder='[{"method":"POST","url":"http://127.0.0.1:8000/api/data","data":{"enc":"xxx"}}]'></textarea></div>
+            <div class="field"><label>Cookie（可选）</label>
+              <input type="text" id="jsCookie" placeholder="session=xxx" autocomplete="off"></div>
+            <div class="btns"><button type="button" class="primary small" id="btnJs">执行</button></div>
+          </div>
+          <div class="toolout" id="jsOut"><div class="empty">扫描结果 / 脚本输出 / 重放结果将显示在这里</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 视图：防护对抗 ===== -->
+    <div id="view-antic" style="display:none">
+      <div class="tabs">
+        <button type="button" class="active" data-sub="ip">IP限流</button>
+        <button type="button" data-sub="waf">WAF检测</button>
+        <button type="button" data-sub="challenge">JS挑战</button>
+        <button type="button" data-sub="captcha">验证码</button>
+      </div>
+
+      <!-- IP限流 / 代理 -->
+      <div class="subpane active" id="sub-ip">
+        <div class="toolgrid">
+          <div class="card">
+            <h2>IP 限流 · 代理连通性测试</h2>
+            <div class="field"><label>探测出口 IP 的 URL</label>
+              <input type="text" id="ipTarget" value="http://ifconfig.me/ip" autocomplete="off"></div>
+            <div class="field"><label>代理列表（每行一个，格式 http://user:pass@ip:port 或 socks5://ip:port）</label>
+              <textarea id="ipList" placeholder="http://127.0.0.1:7890&#10;http://127.0.0.1:8080"></textarea></div>
+            <div class="btns"><button type="button" class="primary small" id="btnIp">逐个测试代理</button></div>
+            <div class="sub" style="margin-top:10px;color:#6E7176;color:var(--muted);font-size:12px">
+              爬取时的代理配置在左侧「爬取配置」：单代理填「代理」，多代理填「代理列表文件」，
+              引擎会按请求轮换出口，用于测试靶场的 IP 限流策略（429）。</div>
+          </div>
+          <div class="toolout" id="ipOut"><div class="empty">代理测试结果将显示在这里：每个代理的连通状态与出口 IP</div></div>
+        </div>
+      </div>
+
+      <!-- WAF 检测 -->
+      <div class="subpane" id="sub-waf">
+        <div class="toolgrid">
+          <div class="card">
+            <h2>WAF 检测（指纹 / 拦截 / UA差异）</h2>
+            <div class="field"><label>目标 URL（含 /waf 等受保护路径）</label>
+              <input type="text" id="wafUrl" placeholder="http://127.0.0.1:8890/waf" autocomplete="off"></div>
+            <div class="field"><label>Cookie（可选）</label>
+              <input type="text" id="wafCookie" placeholder="session=xxx" autocomplete="off"></div>
+            <div class="btns"><button type="button" class="primary small" id="btnWaf">执行 WAF 检测</button></div>
+            <div class="sub" style="margin-top:10px;color:#6E7176;color:var(--muted);font-size:12px">
+              识别 WAF 类型指纹、判断是否被拦截，并用三种 UA 差分定位 UA 规则。不含绕过 payload 库。</div>
+          </div>
+          <div class="toolout" id="wafOut"><div class="empty">WAF 检测报告将显示在这里</div></div>
+        </div>
+      </div>
+
+      <!-- JS 挑战 -->
+      <div class="subpane" id="sub-challenge">
+        <div class="toolgrid">
+          <div class="card">
+            <h2>JS 挑战（提取脚本 → Node 执行 → 取令牌 → 重放）</h2>
+            <div class="field"><label>目标 URL（挑战页）</label>
+              <input type="text" id="chalUrl" placeholder="http://127.0.0.1:8890/challenge" autocomplete="off"></div>
+            <div class="field"><label>Cookie（可选，人工过挑战后的令牌）</label>
+              <input type="text" id="chalCookie" placeholder="challenge_ok=chk_xxx" autocomplete="off"></div>
+            <div class="btns"><button type="button" class="primary small" id="btnChal">分析并尝试取令牌</button></div>
+            <div class="sub" style="margin-top:10px;color:#6E7176;color:var(--muted);font-size:12px">
+              适用于靶场自建的 cookie 计算型挑战：提取内联脚本 → 注入最小浏览器环境用 Node 执行 →
+              捕获 document.cookie 令牌 → 携带重放验证放行。需本机安装 Node.js。</div>
+          </div>
+          <div class="toolout" id="chalOut"><div class="empty">挑战分析结果将显示在这里</div></div>
+        </div>
+      </div>
+
+      <!-- 验证码 -->
+      <div class="subpane" id="sub-captcha">
+        <div class="toolgrid">
+          <div class="card">
+            <h2>验证码检测与分类</h2>
+            <div class="field"><label>目标 URL（含验证码的页面）</label>
+              <input type="text" id="capUrl" placeholder="http://127.0.0.1:8890/captcha" autocomplete="off"></div>
+            <div class="field"><label>Cookie（可选）</label>
+              <input type="text" id="capCookie" placeholder="session=xxx" autocomplete="off"></div>
+            <div class="btns"><button type="button" class="primary small" id="btnCap">检测验证码</button></div>
+            <div class="sub" style="margin-top:10px;color:#6E7176;color:var(--muted);font-size:12px">
+              只做检测与类型分类（图形 / 滑块 / 点选 / 短信）。不提供自动识别破解（属灰产能力）；
+              靶场训练请走人工接力：浏览器手动过验证码后把 Cookie 填到爬取配置。</div>
+          </div>
+          <div class="toolout" id="capOut"><div class="empty">验证码检测结果将显示在这里</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>仅用于你拥有或已获书面授权的目标 · 默认全速爬取、不限制域名 · 反爬对抗 / 防护对抗模块为靶场验证设计（验证码仅检测分类，不做自动识别）</footer>
+
+<!-- 文件预览弹窗 -->
+<div class="modal" id="modal">
+  <div class="mbox">
+    <div class="mhead">
+      <span class="mname" id="modalName"></span>
+      <button type="button" class="ghost" id="modalClose">关闭</button>
+    </div>
+    <pre id="modalBody"></pre>
+  </div>
+</div>
+
+<!-- 使用声明：首次启动自动弹一次，之后可从顶栏「使用声明」随时查看 -->
+<div class="modal" id="disclaimer">
+  <div class="mbox" style="width:620px">
+    <div class="mhead">
+      <span class="mname">使用声明</span>
+      <button type="button" class="ghost" id="discClose">我已了解</button>
+    </div>
+    <div style="padding:14px;background:#FFFFFF;background:var(--panel);line-height:1.75">
+      <p style="margin:0 0 10px">Gecko 是一款具备实战能力的<strong>通用</strong>爬虫工具，
+        工具本身不对目标站点设置限制与边界，可针对真实网站抓取有效数据。</p>
+      <p style="margin:0 0 10px">使用即视为你<strong>自愿遵守</strong>：目标站点的服务条款与
+        robots 约定、所在地法律法规，以及数据使用与传播的合规要求
+        （不抓取、不存储、不传播违法内容与个人敏感信息，不用于未授权的商业用途）。</p>
+      <p style="margin:0 0 10px">请自行控制并发与频率，避免对目标站点造成影响；
+        因使用本工具产生的任何后果由使用者承担。</p>
+      <p style="margin:0;color:#6E7176;color:var(--muted);font-size:12px">
+        本声明只在本机记录，不会上传任何信息。</p>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- 兼容兜底：这段必须是 ES5 语法，否则老内核连它自己都解析不了 -->
+<script>
+(function () {
+  // 1) 老内核没有 fetch，用 XHR 顶上（返回对象只实现页面用到的 text()/json()）
+  if (!window.fetch) {
+    window.fetch = function (url, opts) {
+      opts = opts || {};
+      return new Promise(function (resolve, reject) {
+        var x = new XMLHttpRequest();
+        x.open((opts.method || "GET").toUpperCase(), url, true);
+        if (opts.headers) {
+          for (var k in opts.headers) { x.setRequestHeader(k, opts.headers[k]); }
+        }
+        x.onload = function () {
+          resolve({
+            ok: x.status >= 200 && x.status < 400,
+            status: x.status,
+            text: function () { return Promise.resolve(x.responseText); },
+            json: function () { return Promise.resolve(JSON.parse(x.responseText)); }
+          });
+        };
+        x.onerror = function () { reject(new Error("network error")); };
+        x.send(opts.body || null);
+      });
+    };
+  }
+
+  // 2) 内核过老（连箭头函数都不认）时，页面外观仍完整，但按钮点不动 —— 明确告知
+  var tooOld = false;
+  try { eval("(function(){ return (function(){return 1})(); })"); } catch (e) { tooOld = true; }
+  if (tooOld) {
+    var bar = document.createElement("div");
+    bar.style.cssText = "position:fixed;left:0;right:0;top:0;z-index:99999;padding:12px 16px;"
+      + "background:#FAF5EA;color:#8A6100;border-bottom:1px solid #E4D5B7;"
+      + "font-size:13px;font-family:Consolas,Microsoft YaHei,sans-serif;"
+      + "text-align:center;line-height:1.6;";
+    bar.innerHTML = "当前浏览器内核过旧，界面可以正常显示，但按钮无法响应。"
+      + "请用 Chrome / Edge 打开本页地址（本机服务地址见程序窗口标题栏）。";
+    document.body.insertBefore(bar, document.body.firstChild);
+  }
+})();
+</script>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+
+const S = {
+  running: false, finished: false, stopped: false, error: null,
+  seed: null, output_dir: null, stats: {}, pages: [], forms: [],
+  interesting: [], comments: [], external: {}, log: []
+};
+let activeTab = "log";
+let activeSub = "font";
+let pollTimer = null;
+
+// ---------- 工具 ----------
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
+function toast(msg, isErr) {
+  const t = $("#toast");
+  t.textContent = msg;
+  t.className = "toast show" + (isErr ? " err" : "");
+  clearTimeout(t._h);
+  t._h = setTimeout(() => t.className = "toast", 3000);
+}
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  return r.json();
+}
+async function postJson(path, payload) {
+  try {
+    return await api(path, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+  } catch (e) { toast("请求失败: " + e, true); return { error: String(e) }; }
+}
+function statusClass(code) {
+  if (code >= 500) return "s5";
+  if (code >= 400) return "s4";
+  if (code >= 300) return "s3";
+  return "s2";
+}
+function renderJson(obj) {
+  return JSON.stringify(obj, null, 2);
+}
+
+// ============ 爬取视图 ============
+function renderStatus() {
+  const pill = $("#statusPill"), txt = $("#statusText");
+  pill.className = "pill";
+  if (S.error) { pill.className = "pill error"; txt.textContent = "出错"; }
+  else if (S.running) { pill.className = "pill running"; txt.textContent = "爬取中"; }
+  else if (S.stopped) { pill.className = "pill stopped"; txt.textContent = "已停止"; }
+  else if (S.finished) { pill.className = "pill finished"; txt.textContent = "已完成"; }
+  else { txt.textContent = "空闲"; }
+  $("#outDir").textContent = S.output_dir ? "输出: " + S.output_dir : "";
+  $("#btnStart").disabled = S.running;
+  $("#btnStop").disabled = !S.running;
+}
+
+function renderStats() {
+  const st = S.stats || {};
+  const cards = [
+    ["pages", "已访问页面", ""], ["urls_discovered", "发现URL", ""],
+    ["forms", "发现表单", ""], ["interesting", "敏感路径", ""],
+    ["http_2xx", "2xx", "c-2xx"], ["http_3xx", "3xx", "c-3xx"],
+    ["http_4xx", "4xx", "c-4xx"], ["http_5xx", "5xx", "c-5xx"],
+    ["errors", "请求错误", ""]
+  ];
+  $("#statsRow").innerHTML = cards.map(([k, lbl, cls]) =>
+    `<div class="stat ${cls}"><div class="num">${esc(st[k] ?? 0)}</div><div class="lbl">${lbl}</div></div>`
+  ).join("");
+  const visited = st.pages ?? S.pages.length;
+  const max = lastConfig.max_pages || 500;
+  const pct = Math.min(100, Math.round(visited / max * 100));
+  $("#pfill").style.width = pct + "%";
+  $("#ptxt").textContent = `进度: 已抓取 ${visited} / ${max} 页 (${pct}%) · 当前 ${S.running ? "爬取中" : (S.finished ? "已结束" : "等待开始")}`;
+}
+
+// v1.4.3 性能：渲染脏检查——数据没变就跳过 innerHTML 重建
+const _rcache = {};
+function _dirty(key, data) {
+  const s = JSON.stringify(data);
+  if (_rcache[key] === s) return false;
+  _rcache[key] = s;
+  return true;
+}
+
+function renderLog() {
+  const box = $("#logbox");
+  const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
+  // 服务器截断（800 条上限）或新一轮爬取时整体重建，其余只增量追加新日志
+  const total = (typeof S.log_total === "number") ? S.log_total : S.log.length;
+  if (S.log.length < logRendered || (total < logTotalSeen)) {
+    box.innerHTML = ""; logRendered = 0;
+  } else if (total > logTotalSeen && logRendered > 0 && S.log.length === logRendered) {
+    box.innerHTML = ""; logRendered = 0;   // 触顶滚动：旧日志被裁掉，重建对齐
+  }
+  if (S.log.length > logRendered) {
+    const frag = document.createDocumentFragment();
+    for (let i = logRendered; i < S.log.length; i++) {
+      const l = S.log[i];
+      const sp = document.createElement("span");
+      sp.className = "l-" + l.level;
+      sp.textContent = "[" + l.level + "] " + l.message;
+      frag.appendChild(sp);
+      frag.appendChild(document.createTextNode("\n"));
+    }
+    box.appendChild(frag);
+    logRendered = S.log.length;
+    while (box.childNodes.length > 1600) { box.removeChild(box.firstChild); box.removeChild(box.firstChild); }
+  }
+  logTotalSeen = total;
+  if (nearBottom) box.scrollTop = box.scrollHeight;
+}
+let logRendered = 0, logTotalSeen = 0;
+
+function renderPages() {
+  const box = $("#pagesBox");
+  if (!S.pages.length) { box.innerHTML = `<div class="empty">还没有抓取到页面</div>`; return; }
+  box.innerHTML =
+    `<table><colgroup><col style="width:40%"><col style="width:9%"><col style="width:30%"><col style="width:7%"><col style="width:14%"></colgroup>
+     <thead><tr><th>URL</th><th>状态</th><th>标题</th><th>深度</th><th>服务器</th></tr></thead><tbody>` +
+    S.pages.map(p =>
+      `<tr><td class="mono">${esc(p.url)}</td><td><span class="sc ${statusClass(p.status)}">${esc(p.status)}</span></td>
+       <td>${esc(p.title)}</td><td>${esc(p.depth)}</td><td class="mono">${esc(p.server || "")}</td></tr>`
+    ).join("") + "</tbody></table>";
+}
+
+function renderForms() {
+  const box = $("#formsBox");
+  if (!S.forms.length) { box.innerHTML = `<div class="empty">还没有发现表单</div>`; return; }
+  box.innerHTML =
+    `<table><colgroup><col style="width:32%"><col style="width:36%"><col style="width:8%"><col style="width:24%"></colgroup>
+     <thead><tr><th>来源页面</th><th>提交地址 action</th><th>方法</th><th>输入项</th></tr></thead><tbody>` +
+    S.forms.map(f =>
+      `<tr><td class="mono">${esc(f.page)}</td><td class="mono">${esc(f.action)}</td>
+       <td><span class="sc s3">${esc(f.method)}</span></td>
+       <td class="mono">${esc((f.inputs || []).map(i => i.name).join(", "))}</td></tr>`
+    ).join("") + "</tbody></table>";
+}
+
+function renderInteresting() {
+  const box = $("#intBox");
+  box.innerHTML = S.interesting.length
+    ? S.interesting.map(u => `<div class="item mono">${esc(u)}</div>`).join("")
+    : `<div class="empty">还没有命中敏感关键词的路径</div>`;
+}
+
+function renderComments() {
+  const box = $("#cmtBox");
+  box.innerHTML = S.comments.length
+    ? S.comments.map(c =>
+        `<div class="item"><div class="mono">${esc(c.comment)}</div><div class="sub">来源: ${esc(c.page)}</div></div>`
+      ).join("")
+    : `<div class="empty">未提取到 HTML 注释（需勾选「提取HTML注释」）</div>`;
+}
+
+// ============ 抓取方式（渲染）切换 ============
+let CAPS = { render_available: false, render_hint: "", engine: "" };
+
+function switchRender(mode) {
+  // 浏览器专属参数只有开了渲染才有意义
+  $("#advRender").style.display = mode ? "" : "none";
+  $("#renderHint").textContent = mode
+    ? (mode === "stealthy"
+        ? "真实浏览器 + 反检测处理：抹掉自动化痕迹，适合有指纹防护的站点（比 dynamic 慢）"
+        : "真实 Chromium 渲染：能抓到 JS 生成的内容，页面多时会明显变慢")
+    : "纯 HTTP 抓取（最快）：拿不到 JS 动态生成的内容时再开渲染";
+}
+
+// ============ 概览（可视化） ============
+function renderOverview() {
+  const st = S.stats || {};
+  const cfg = S.last_config || {};
+  const pages = S.pages || [];
+  const box = $("#ovBox");
+  if (!box) return;
+  if (!pages.length && !S.running) {
+    box.innerHTML = `<div class="empty">开始爬取后，这里会显示统计概览与分布图</div>`;
+    return;
+  }
+
+  const modeMap = { "": "HTTP", dynamic: "浏览器渲染", stealthy: "反检测浏览器" };
+  const modeText = cfg.render ? " · 方式 " + (modeMap[cfg.render] || cfg.render) : " · 方式 HTTP";
+
+  // 状态码分布
+  const buckets = [["2xx", st.http_2xx], ["3xx", st.http_3xx],
+                   ["4xx", st.http_4xx], ["5xx", st.http_5xx]];
+  const maxBucket = Math.max(1, ...buckets.map(b => Number(b[1]) || 0));
+
+  // 深度分布
+  const depthMap = {};
+  pages.forEach(p => { const d = p.depth ?? 0; depthMap[d] = (depthMap[d] || 0) + 1; });
+  const depths = Object.keys(depthMap).map(Number).sort((a, b) => a - b);
+  const maxDepth = Math.max(1, ...depths.map(d => depthMap[d]));
+
+  const cards = [
+    ["页面", pages.length],
+    ["请求数", st.requests_count ?? pages.length],
+    ["失败", st.failed_requests_count ?? 0],
+    ["表单", (S.forms || []).length],
+    ["敏感路径", (S.interesting || []).length],
+    ["缓存命中", st.cache_hits ?? 0],
+    ["耗时(秒)", st.elapsed ?? 0]
+  ];
+
+  box.innerHTML =
+    `<div class="ovmeta">引擎 <b>自研引擎 v${esc(CAPS.engine || "3.5")}</b>${esc(modeText)}` +
+    ` · 目标 <span class="mono">${esc(cfg.url || S.seed || "")}</span></div>` +
+    `<div class="ovcards">` +
+    cards.map(([k, v]) =>
+      `<div class="ovcard"><div class="num">${esc(v)}</div><div class="lbl">${esc(k)}</div></div>`).join("") +
+    `</div>` +
+    `<div class="ovh">状态码分布</div><div class="bars">` +
+    buckets.map(([k, v]) => {
+      const n = Number(v) || 0;
+      return `<div class="barrow"><span class="blbl">${k}</span>` +
+             `<span class="btrack"><span class="bfill b-${k}" style="width:${Math.round(n / maxBucket * 100)}%"></span></span>` +
+             `<span class="bval">${n}</span></div>`;
+    }).join("") + `</div>` +
+    `<div class="ovh">爬取深度分布</div><div class="bars">` +
+    (depths.length ? depths.map(d =>
+      `<div class="barrow"><span class="blbl">第 ${d} 层</span>` +
+      `<span class="btrack"><span class="bfill b-depth" style="width:${Math.round(depthMap[d] / maxDepth * 100)}%"></span></span>` +
+      `<span class="bval">${depthMap[d]}</span></div>`).join("")
+      : `<div class="empty">暂无数据</div>`) + `</div>`;
+}
+
+function renderExternal() {
+  const box = $("#extBox");
+  const entries = Object.entries(S.external || {}).sort((a, b) => b[1] - a[1]);
+  box.innerHTML = entries.length
+    ? entries.map(([u, n]) => `<div class="item"><div class="mono">${esc(u)}</div><div class="sub">站外链接，出现 ${esc(n)} 次（已并入爬取队列）</div></div>`).join("")
+    : `<div class="empty">没有发现站外引用</div>`;
+}
+
+let lastConfig = { max_pages: 500 };
+
+async function renderFiles() {
+  const data = await api("/api/files");
+  const box = $("#filesBox");
+  if (!data.files || !data.files.length) {
+    box.innerHTML = `<div class="empty">暂无报告文件（爬取完成后生成）</div>`;
+    return;
+  }
+  box.innerHTML = data.files.map(f =>
+    `<div class="filecard"><div class="fname">${esc(f.name)}</div>
+     <div class="fmeta">${esc(f.size)} 字节 · ${esc(f.mtime)}</div>
+     <button type="button" class="ghost" onclick="viewFile('${esc(f.name).replace(/'/g, "\\'")}')">查看</button>
+     <button type="button" class="ghost" onclick="downloadFile('${esc(f.name).replace(/'/g, "\\'")}')">下载</button></div>`
+  ).join("");
+}
+
+async function viewFile(name) {
+  try {
+    const r = await fetch("/api/file?name=" + encodeURIComponent(name));
+    const text = await r.text();
+    $("#modalName").textContent = name;
+    $("#modalBody").textContent = text;
+    $("#modal").classList.add("open");
+  } catch (e) { toast("读取文件失败: " + e, true); }
+}
+function downloadFile(name) {
+  window.open("/api/download?name=" + encodeURIComponent(name), "_blank");
+}
+
+function collectConfig() {
+  lastConfig = {
+    url: $("#cfgUrl").value.trim(),
+    url_file: $("#cfgUrlFile").value.trim(),
+    output: $("#cfgOutput").value.trim(),
+    depth: isNaN(parseInt($("#cfgDepth").value, 10)) ? 3 : parseInt($("#cfgDepth").value, 10),
+    threads: parseInt($("#cfgThreads").value) || 5,
+    delay: parseFloat($("#cfgDelay").value) || 0,
+    max_pages: parseInt($("#cfgMax").value) || 500,
+    cookie: $("#cfgCookie").value.trim(),
+    proxy: $("#cfgProxy").value.trim(),
+    proxy_file: $("#cfgProxyFile").value.trim(),
+    headers: $("#cfgHeaders").value.trim(),
+    exclude: $("#cfgExclude").value.split(/\n|,/).map(s => s.trim()).filter(Boolean),
+    comments: $("#cfgComments").checked,
+    js_urls: $("#cfgJsUrls").checked,
+    sitemap: $("#cfgSitemap").checked,
+    timeout: parseFloat($("#cfgTimeout").value) || 10,
+    retries: parseInt($("#cfgRetries").value) || 2,
+    max_body_mb: parseFloat($("#cfgBodyMb").value) || 3,
+    backend: $("#cfgBackend").value,
+    impersonate: $("#cfgImpersonate").value.trim(),
+    no_verify: $("#cfgNoVerify").checked,
+    subdomains: $("#cfgSubdomains").checked,
+    respect_robots: $("#cfgRobots").checked,
+    fresh: $("#cfgFresh").checked,
+    // —— 进阶能力 ——
+    render: $("#cfgRender").value,
+    per_domain: parseInt($("#cfgPerDomain").value) || 0,
+    autothrottle: $("#cfgAutothrottle").checked,
+    checkpoint: $("#cfgCheckpoint").checked,
+    cache: $("#cfgCache").checked,
+    wait_selector: $("#cfgWaitSelector").value.trim(),
+    network_idle: $("#cfgNetworkIdle").checked,
+    select: $("#cfgSelect").value.split("\n").map(s => s.trim()).filter(Boolean),
+    select_each: $("#cfgSelectEach").value.trim(),
+    // —— v3.9 ——
+    qps: parseFloat($("#cfgQps").value) || 0,
+    method: $("#cfgMethod").value,
+    same_host: $("#cfgSameHost").checked,
+    data: _bodyRaw().startsWith("{") ? "" : _bodyRaw(),
+    // —— v4.0 企业级 ——
+    extract: $("#cfgExtract").checked,
+    extract_tables: $("#cfgExtractTables").checked,
+    dedup: $("#cfgDedup").checked,
+    incremental: $("#cfgIncremental").checked,
+    rotate_ua: $("#cfgRotateUa").checked,
+    referer_auto: $("#cfgRefererAuto").checked,
+    pager: parseInt($("#cfgPager").value) || 0,
+    export: [$("#expCsv").checked && "csv", $("#expXlsx").checked && "xlsx",
+             $("#expSqlite").checked && "sqlite", $("#expJsonl").checked && "jsonl",
+             $("#expMd").checked && "md"
+            ].filter(Boolean).join(","),
+    // —— v1.5.0 实战增强 ——
+    adaptive: $("#cfgAdaptive").checked,
+    capture_xhr: $("#cfgXhr").checked,
+    proxy_strategy: $("#cfgProxyStrategy").value,
+    proxy_fail_eject: $("#cfgProxyEject").checked,
+    json_body: _bodyRaw().startsWith("{") ? _bodyRaw() : ""
+  };
+  return lastConfig;
+}
+
+function _bodyRaw() { return ($("#cfgData").value || "").trim(); }
+
+async function startCrawl() {
+  const cfg = collectConfig();
+  if (!cfg.url && !cfg.url_file) { toast("请先填写目标 URL 或 URL 清单文件", true); return; }
+  let res;
+  try {
+    res = await api("/api/start", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(cfg)
+    });
+  } catch (e) { toast("请求失败: " + e, true); return; }
+  if (res.ok) {
+    toast("爬取已开始，输出目录: " + res.output);
+    switchTab("log");
+    startPoll();
+  } else {
+    toast(res.error || "启动失败", true);
+  }
+}
+
+async function stopCrawl() {
+  let res;
+  try {
+    res = await api("/api/stop", { method: "POST" });
+  } catch (e) { toast("请求失败: " + e, true); return; }
+  if (res.ok) { toast("已发送停止请求，等待当前请求完成…"); startPoll(); }
+  else toast(res.error || "停止失败", true);
+}
+
+let _prevRunning = false, _filesInit = false;
+async function refresh() {
+  let s;
+  try { s = await api("/api/state?rev=" + (S.rev || 0)); } catch (e) { return; }
+  // 服务器说没有新事件：直接跳过，省掉整页重渲染
+  if (s && s.changed === false) return;
+  Object.assign(S, s);
+  renderStatus();
+  if (_dirty("stats", [S.stats, S.running, S.finished, S.last_config])) renderStats();
+  renderLog();
+  if (_dirty("pages", S.pages)) renderPages();
+  if (_dirty("forms", S.forms)) renderForms();
+  if (_dirty("interesting", S.interesting)) renderInteresting();
+  if (_dirty("comments", S.comments)) renderComments();
+  if (_dirty("external", S.external)) renderExternal();
+  if (_dirty("overview", [S.pages, S.stats, S.running, S.forms, S.interesting, S.last_config])) renderOverview();
+  if (!S.running && (!_filesInit || _prevRunning)) { renderFiles(); _filesInit = true; }
+  _prevRunning = S.running;
+}
+
+// v1.4.3 性能：动态轮询节奏——爬取中 700ms；空闲 2s；页面切到后台 4s 并跳过渲染
+function startPoll() { stopPoll(); refresh(); schedulePoll(); }
+function schedulePoll() {
+  stopPoll();
+  pollTimer = setTimeout(async () => {
+    if (document.hidden) { schedulePoll(); return; }  // 后台标签页只空转，不请求
+    await refresh();
+    schedulePoll();
+  }, document.hidden ? 4000 : (S.running ? 700 : 2000));
+}
+function stopPoll() { if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; } }
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) startPoll();   // 回到前台立即拉一次并恢复节奏
+});
+
+function switchTab(name) {
+  activeTab = name;
+  document.querySelectorAll("#tabs button").forEach(b =>
+    b.classList.toggle("active", b.dataset.tab === name));
+  document.querySelectorAll(".tabpane").forEach(p =>
+    p.classList.toggle("active", p.id === "pane-" + name));
+}
+
+// ============ 反爬对抗 / 防护对抗 工具 ============
+function switchView(name) {
+  const ids = ["view-crawl", "view-tools", "view-antic"];
+  // 显式设置 display（不回退到 CSS 规则），老内核也直接生效
+  ids.forEach(id => document.getElementById(id).style.display = (id === "view-" + name) ? "block" : "none");
+  $("#segCrawl").classList.toggle("active", name === "crawl");
+  $("#segTools").classList.toggle("active", name === "tools");
+  $("#segAntic").classList.toggle("active", name === "antic");
+  if (name !== "crawl" && !S.running) renderFiles();
+}
+
+function switchSub(name) {
+  activeSub = name;
+  const view = $("#view-tools").style.display !== "none" ? "#view-tools" : "#view-antic";
+  document.querySelectorAll(view + " .tabs button").forEach(b =>
+    b.classList.toggle("active", b.dataset.sub === name));
+  document.querySelectorAll(view + " .subpane").forEach(p =>
+    p.classList.toggle("active", p.id === "sub-" + name));
+}
+
+// 字体反爬
+async function runFont() {
+  const out = $("#fontOut");
+  out.innerHTML = `<div class="empty">分析中，字体下载与字形比对可能需要几秒…</div>`;
+  const res = await postJson("/api/font", {
+    url: $("#fontUrl").value.trim(),
+    text: $("#fontText").value,
+    ref_font: $("#fontRef").value.trim(),
+    cookie: $("#fontCookie").value.trim(),
+    no_verify: true
+  });
+  if (res.error) { out.innerHTML = `<div class="errtag">${esc(res.error)}</div>`; return; }
+  let html = "";
+  html += `<div class="kv"><span class="k">字体来源</span><span class="v">${esc(res.font_source || "?")}</span></div>`;
+  html += `<div class="kv"><span class="k">字体大小</span><span class="v">${esc(res.font_size)} 字节</span></div>`;
+  const m = res.mapping || {};
+  const entries = Object.entries(m);
+  if (entries.length) {
+    html += `<table style="margin-top:10px"><colgroup><col style="width:30%"><col style="width:70%"></colgroup>
+      <thead><tr><th>混淆码点</th><th>真实字符</th></tr></thead><tbody>`;
+    for (const [k, v] of entries.slice(0, 60)) {
+      html += `<tr><td class="mono">${esc(k)}</td><td style="font-size:18px">${esc(v)}</td></tr>`;
+    }
+    html += `</tbody></table>`;
+    if (entries.length > 60) html += `<div class="sub">…共 ${entries.length} 个映射（仅显示前 60）</div>`;
+  } else {
+    html += `<div class="warntag">未重建出映射（参考字体不匹配或阈值过低，可 --ref-font 指定字体）</div>`;
+  }
+  if (res.original != null) {
+    html += `<div style="margin-top:12px"><div class="kv"><span class="k">原文</span><span class="v">${esc(res.original)}</span></div>
+      <div class="kv"><span class="k">解码后</span><span class="v" style="font-size:16px;color:#1F7A5F;color:var(--ok)">${esc(res.decoded)}</span></div></div>`;
+  }
+  out.innerHTML = html;
+}
+
+// 文本解码
+async function runDecode() {
+  const out = $("#decOut");
+  const res = await postJson("/api/decode", { text: $("#decText").value });
+  if (res.error) { out.innerHTML = `<div class="errtag">${esc(res.error)}</div>`; return; }
+  let html = `<div class="kv"><span class="k">原始</span><span class="v">${esc(res.original)}</span></div>`;
+  for (const st of res.steps || []) {
+    html += `<div class="kv"><span class="k">${esc(st.step)}</span><span class="v">${esc(st.result)}</span></div>`;
+  }
+  html += `<div class="kv" style="margin-top:8px"><span class="k" style="color:#1F7A5F;color:var(--ok)">最终</span>
+    <span class="v" style="font-size:15px;color:#1F7A5F;color:var(--ok)">${esc(res.final)}</span></div>`;
+  if (!(res.steps || []).length) html += `<div class="warntag" style="margin-top:8px">未检测到可解码的变换，内容可能已是明文</div>`;
+  out.innerHTML = html;
+}
+
+// 水印
+function fileToB64(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(",")[1]);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+async function runWater() {
+  const out = $("#watOut");
+  const file = $("#watFile").files[0];
+  if (!file) { toast("请先选择图片", true); return; }
+  out.innerHTML = `<div class="empty">处理中…</div>`;
+  const image_b64 = await fileToB64(file);
+  const res = await postJson("/api/water", {
+    image_b64, action: $("#watAction").value, method: $("#watMethod").value,
+    name: file.name
+  });
+  if (res.error) { out.innerHTML = `<div class="errtag">${esc(res.error)}</div>`; return; }
+  if (res.action === "clean") {
+    out.innerHTML = `<div class="kv"><span class="k">清理方法</span><span class="v">${esc(res.method_used)}</span></div>
+      <div class="kv"><span class="k">输出大小</span><span class="v">${esc(res.bytes)} 字节</span></div>
+      <div class="imgout"><img src="data:image/png;base64,${res.image_b64}" alt="cleaned">
+        <br><a class="ghost button" style="display:inline-block;margin-top:10px;text-decoration:none"
+          href="data:image/png;base64,${res.image_b64}" download="cleaned.png">下载清理后图片</a></div>`;
+  } else {
+    let html = `<div class="kv"><span class="k">图片</span><span class="v">${esc(res.name)} · ${esc(res.width)}x${esc(res.height)}</span></div>`;
+    html += `<div class="kv"><span class="k">判定</span><span class="v" style="color:${res.flags && res.flags.length ? "var(--warn)" : "var(--ok)"}">${esc(res.verdict)}</span></div>`;
+    for (const f of res.flags || []) html += `<div class="kv"><span class="k">发现</span><span class="v warntag">${esc(f)}</span></div>`;
+    html += `<table style="margin-top:10px"><colgroup><col style="width:40%"><col style="width:60%"></colgroup>
+      <thead><tr><th>检查项</th><th>数值</th></tr></thead><tbody>`;
+    for (const [k, v] of Object.entries(res.checks || {})) {
+      html += `<tr><td class="mono">${esc(k)}</td><td class="mono">${esc(renderJson(v))}</td></tr>`;
+    }
+    html += `</tbody></table>`;
+    html += `<div class="sub" style="margin-top:8px">说明：启发式检测，用于靶场验证；无证据时标注「未发现」不保证绝对无痕。</div>`;
+    out.innerHTML = html;
+  }
+}
+
+// 鉴权测试
+async function runAuth() {
+  const out = $("#authOut");
+  const url = $("#authUrl").value.trim();
+  if (!url) { toast("请先填写目标 URL", true); return; }
+  out.innerHTML = `<div class="empty">正在对多个鉴权上下文发差分请求…</div>`;
+  const res = await postJson("/api/auth", {
+    url, cookie: $("#authCookie").value.trim(),
+    method: $("#authMethod").value, body_json: $("#authBody").value.trim() || null,
+    no_verify: $("#authVerify").value === "0"
+  });
+  if (res.error) { out.innerHTML = `<div class="errtag">${esc(res.error)}</div>`; return; }
+  const rows = res.results || [];
+  let html = `<div class="kv"><span class="k">目标</span><span class="v">${esc(res.url)} · ${esc(res.method)}</span></div>`;
+  html += `<table style="margin-top:8px"><colgroup><col style="width:22%"><col style="width:9%"><col style="width:10%"><col style="width:12%"><col style="width:47%"></colgroup>
+    <thead><tr><th>上下文</th><th>状态</th><th>长度</th><th>指纹</th><th>判定</th></tr></thead><tbody>`;
+  for (const r of rows) {
+    const cls = typeof r.status === "number" ? statusClass(r.status) : "sx";
+    const verdictCls = (r.verdict || "").includes("疑似") ? "errtag"
+      : (r.verdict || "").includes("差异") ? "warntag" : "oktag";
+    html += `<tr><td>${esc(r.context)}</td>
+      <td><span class="sc ${cls}">${esc(r.status)}</span></td>
+      <td class="mono">${esc(r.length)}</td><td class="mono">${esc(r.digest)}</td>
+      <td class="${verdictCls}">${esc(r.verdict)}</td></tr>`;
+  }
+  html += `</tbody></table>`;
+  html += `<div class="sub" style="margin-top:8px">「疑似越权」= 匿名被拒(401/403/302)而篡改后返回200，需人工复核页面内容；仅限授权靶场。</div>`;
+  out.innerHTML = html;
+}
+
+// JS 接口加密
+async function runJs() {
+  const out = $("#jsOut");
+  const action = $("#jsAction").value;
+  out.innerHTML = `<div class="empty">执行中…</div>`;
+  const payload = { action, cookie: $("#jsCookie").value.trim(), no_verify: true };
+  if (action === "scan") payload.url = $("#jsUrl").value.trim();
+  if (action === "run") payload.script = $("#jsScript").value;
+  if (action === "replay") payload.captures = $("#jsCaptures").value.trim() || "[]";
+  const res = await postJson("/api/js", payload);
+  if (res.error) { out.innerHTML = `<div class="errtag">${esc(res.error)}</div>`; return; }
+  let html = "";
+  if (action === "scan") {
+    html += `<div class="kv"><span class="k">页面</span><span class="v">${esc(res.page)}</span></div>`;
+    html += `<div class="kv"><span class="k">JS文件数</span><span class="v">${esc(res.script_count)}</span></div>`;
+    const finds = res.findings || [];
+    html += `<table style="margin-top:8px"><colgroup><col style="width:26%"><col style="width:16%"><col style="width:58%"></colgroup>
+      <thead><tr><th>文件</th><th>特征类型</th><th>上下文</th></tr></thead><tbody>`;
+    for (const f of finds.slice(0, 80)) {
+      html += `<tr><td class="mono">${esc(f.file)}:${esc(f.line)}</td>
+        <td class="warntag">${esc(f.type)}</td>
+        <td class="mono" style="font-size:11px">${esc(f.context)}</td></tr>`;
+    }
+    html += `</tbody></table>`;
+    if (finds.length > 80) html += `<div class="sub">…共 ${finds.length} 条，仅显示前 80</div>`;
+    if (!finds.length) html += `<div class="empty">未发现加密特征</div>`;
+    const keys = res.key_candidates || [];
+    if (keys.length) {
+      html += `<div style="margin-top:10px"><b>疑似硬编码密钥/常量候选</b></div>`;
+      html += `<table style="margin-top:6px"><colgroup><col style="width:100%"></colgroup><tbody>` +
+        keys.slice(0, 40).map(k => `<tr><td class="mono">${esc(k)}</td></tr>`).join("") + `</tbody></table>`;
+    }
+  } else if (action === "run") {
+    html += `<div class="kv"><span class="k">退出码</span><span class="v">${esc(res.exit)}</span></div>`;
+    if (res.stdout) html += `<pre style="margin-top:8px">${esc(res.stdout)}</pre>`;
+    if (res.stderr) html += `<pre style="margin-top:8px" class="errtag">${esc(res.stderr)}</pre>`;
+    html += `<div class="sub" style="margin-top:8px">脚本需自行定义解密/签名函数并打印结果；请只使用你掌握的密钥与授权目标。</div>`;
+  } else {
+    const rows = res.results || [];
+    html += `<div class="kv"><span class="k">请求总数</span><span class="v">${esc(res.total)}</span></div>`;
+    html += `<table style="margin-top:8px"><colgroup><col style="width:6%"><col style="width:8%"><col style="width:42%"><col style="width:9%"><col style="width:35%"></colgroup>
+      <thead><tr><th>#</th><th>方法</th><th>URL</th><th>状态</th><th>响应开头</th></tr></thead><tbody>`;
+    for (const r of rows) {
+      const sc = typeof r.status === "number" ? `<span class="sc ${statusClass(r.status)}">${esc(r.status)}</span>` : `<span class="sc sx">ERR</span>`;
+      html += `<tr><td>${esc(r.index)}</td><td>${esc(r.method || "")}</td>
+        <td class="mono" style="font-size:11px">${esc(r.url || r.error || "")}</td>
+        <td>${sc}${r.status != null ? " · " + esc(r.length) : ""}</td>
+        <td class="mono" style="font-size:11px">${esc(r.body_head || r.error || "")}</td></tr>`;
+    }
+    html += `</tbody></table>`;
+    if (!rows.length) html += `<div class="empty">没有可重放的请求（检查 captures JSON 格式）</div>`;
+  }
+  out.innerHTML = html;
+}
+
+// ============ 防护对抗工具 ============
+function kvLine(k, v, cls) {
+  return `<div class="kv"><span class="k">${esc(k)}</span><span class="v ${cls || ""}">${esc(v)}</span></div>`;
+}
+
+// IP 限流：代理连通性测试
+async function runIp() {
+  const out = $("#ipOut");
+  const proxies = $("#ipList").value.trim();
+  if (!proxies) { toast("请先填写代理列表", true); return; }
+  out.innerHTML = `<div class="empty">正在逐个测试代理连通性（每个最长 8 秒）…</div>`;
+  const res = await postJson("/api/proxy-test", {
+    proxies, target: $("#ipTarget").value.trim() || "http://ifconfig.me/ip"
+  });
+  if (res.error) { out.innerHTML = `<div class="errtag">${esc(res.error)}</div>`; return; }
+  const rows = res.results || [];
+  let html = `<div class="kv"><span class="k">探测目标</span><span class="v">${esc(res.target || $("#ipTarget").value.trim())}</span></div>`;
+  html += `<table style="margin-top:8px"><colgroup><col style="width:44%"><col style="width:10%"><col style="width:46%"></colgroup>
+    <thead><tr><th>代理</th><th>状态</th><th>出口信息</th></tr></thead><tbody>`;
+  for (const r of rows) {
+    const ok = r.status === 200;
+    html += `<tr><td class="mono" style="font-size:11px">${esc(r.proxy)}</td>
+      <td><span class="sc ${ok ? "s2" : "sx"}">${esc(r.status)}</span></td>
+      <td class="mono" style="font-size:11px">${esc(r.body || "")}</td></tr>`;
+  }
+  html += `</tbody></table>`;
+  html += `<div class="sub" style="margin-top:8px">出口 IP 不同的代理可轮换应对靶场的 IP 限流（429）。</div>`;
+  out.innerHTML = html;
+}
+
+// WAF 检测
+async function runWaf() {
+  const out = $("#wafOut");
+  const url = $("#wafUrl").value.trim();
+  if (!url) { toast("请先填写目标 URL", true); return; }
+  out.innerHTML = `<div class="empty">正在探测 WAF 指纹并做 UA 差异测试…</div>`;
+  const res = await postJson("/api/waf", { url, cookie: $("#wafCookie").value.trim(), no_verify: true });
+  if (res.error) { out.innerHTML = `<div class="errtag">${esc(res.error)}</div>`; return; }
+  let html = `<div class="kv"><span class="k">判定</span><span class="v" style="color:${res.blocked ? "var(--warn)" : "var(--ok)"}">${esc(res.verdict)}</span></div>`;
+  html += `<div class="kv"><span class="k">WAF指纹</span><span class="v">${esc((res.fingerprints || []).join(", ") || "未识别")}</span></div>`;
+  const b = res.baseline || {};
+  html += `<div class="kv"><span class="k">基线状态</span><span class="v">${esc(b.status)} · Server: ${esc(b.server || "-")} · ${esc(b.length)}B</span></div>`;
+  html += `<div class="kv"><span class="k">是否拦截</span><span class="v ${res.blocked ? "errtag" : "oktag"}">${res.blocked ? "是" : "否"}</span></div>`;
+  const ua = res.ua_diff_tests || [];
+  if (ua.length) {
+    html += `<table style="margin-top:8px"><colgroup><col style="width:26%"><col style="width:12%"><col style="width:14%"><col style="width:14%"><col style="width:34%"></colgroup>
+      <thead><tr><th>User-Agent</th><th>状态</th><th>长度</th><th>指纹</th><th>判定</th></tr></thead><tbody>`;
+    for (const t of ua) {
+      const sc = typeof t.status === "number" ? `<span class="sc ${statusClass(t.status)}">${esc(t.status)}</span>` : `<span class="sc sx">ERR</span>`;
+      html += `<tr><td>${esc(t.ua)}</td><td>${sc}</td><td class="mono">${esc(t.length ?? "-")}</td>
+        <td class="mono">${esc(t.digest || "-")}</td>
+        <td class="${t.blocked ? "errtag" : "oktag"}">${t.blocked ? "被拦截" : "放行"}</td></tr>`;
+    }
+    html += `</tbody></table>`;
+  }
+  for (const h of res.hints || []) html += `<div class="kv"><span class="k">提示</span><span class="v warntag">${esc(h)}</span></div>`;
+  html += `<div class="sub" style="margin-top:8px">${esc(res.note || "")}</div>`;
+  out.innerHTML = html;
+}
+
+// JS 挑战
+async function runChal() {
+  const out = $("#chalOut");
+  const url = $("#chalUrl").value.trim();
+  if (!url) { toast("请先填写目标 URL", true); return; }
+  out.innerHTML = `<div class="empty">正在检测挑战特征、执行脚本并取令牌（依赖 Node.js）…</div>`;
+  const res = await postJson("/api/challenge", { url, cookie: $("#chalCookie").value.trim(), no_verify: true });
+  if (res.error) { out.innerHTML = `<div class="errtag">${esc(res.error)}</div>`; return; }
+  let html = `<div class="kv"><span class="k">判定</span><span class="v" style="color:${res.is_challenge ? "var(--warn)" : "var(--ok)"}">${esc(res.verdict)}</span></div>`;
+  html += `<div class="kv"><span class="k">状态 / Set-Cookie</span><span class="v">${esc(res.status)} / ${esc(res.set_cookie || "-")}</span></div>`;
+  html += `<div class="kv"><span class="k">挑战特征</span><span class="v">${esc((res.features || []).join(", ") || "无")}</span></div>`;
+  html += `<div class="kv"><span class="k">内联脚本数</span><span class="v">${esc(res.inline_script_count)}</span></div>`;
+  const assigns = res.cookie_assignments || [];
+  if (assigns.length) {
+    html += `<div style="margin-top:8px"><b>document.cookie 赋值语句</b></div>`;
+    html += `<pre style="margin-top:6px">${esc(assigns.join("\n"))}</pre>`;
+  }
+  const ne = res.node_exec || {};
+  if (ne.error) {
+    html += `<div class="kv"><span class="k">Node执行</span><span class="v errtag">${esc(ne.error)}</span></div>`;
+  } else {
+    html += `<div class="kv"><span class="k">Node退出码</span><span class="v">${esc(ne.exit)}</span></div>`;
+    if (res.solved_cookie) {
+      html += `<div class="kv" style="margin-top:8px"><span class="k" style="color:#1F7A5F;color:var(--ok)">解析出的令牌</span>
+        <span class="v oktag">${esc(res.solved_cookie)}</span></div>`;
+    } else if (ne.stderr_tail) {
+      html += `<pre style="margin-top:8px" class="errtag">${esc(ne.stderr_tail)}</pre>`;
+    }
+  }
+  const rp = res.replay_after;
+  if (rp) {
+    html += `<div style="margin-top:8px"><b>携带令牌重放</b></div>`;
+    html += `<div class="kv"><span class="k">状态</span><span class="v">${esc(rp.status)} · ${esc(rp.length)}B · digest ${esc(rp.digest)} · ${rp.blocked_like ? "仍被拦" : "未拦"}</span></div>`;
+  }
+  html += `<div class="sub" style="margin-top:8px">${esc(res.note || "")}</div>`;
+  out.innerHTML = html;
+}
+
+// 验证码检测
+async function runCap() {
+  const out = $("#capOut");
+  const url = $("#capUrl").value.trim();
+  if (!url) { toast("请先填写目标 URL", true); return; }
+  out.innerHTML = `<div class="empty">正在检测验证码特征…</div>`;
+  const res = await postJson("/api/captcha", { url, cookie: $("#capCookie").value.trim(), no_verify: true });
+  if (res.error) { out.innerHTML = `<div class="errtag">${esc(res.error)}</div>`; return; }
+  let html = `<div class="kv"><span class="k">判定</span><span class="v" style="color:${res.has_captcha ? "var(--warn)" : "var(--ok)"}">${esc(res.verdict)}</span></div>`;
+  if (res.has_captcha) {
+    html += `<div class="kv"><span class="k">类型</span><span class="v">${esc(res.type)}</span></div>`;
+    if ((res.keywords || []).length) html += `<div class="kv"><span class="k">关键词</span><span class="v">${esc(res.keywords.join(", "))}</span></div>`;
+    if ((res.form_fields || []).length) html += `<div class="kv"><span class="k">表单字段</span><span class="v">${esc(res.form_fields.join(", "))}</span></div>`;
+    if ((res.captcha_images || []).length) html += `<div class="kv"><span class="k">验证码图片</span><span class="v">${esc(res.captcha_images.join(", "))}</span></div>`;
+    if ((res.components || []).length) html += `<div class="kv"><span class="k">组件特征</span><span class="v">${esc(res.components.join(", "))}</span></div>`;
+    html += `<div style="margin-top:10px"><b>人工接力指引</b></div>`;
+    for (const s of res.manual_steps || []) html += `<div class="kv"><span class="k">→</span><span class="v">${esc(s)}</span></div>`;
+  } else {
+    html += `<div class="kv"><span class="k">状态</span><span class="v">${esc(res.status)}</span></div>`;
+    html += `<div class="sub" style="margin-top:8px">页面未检测到验证码特征。</div>`;
+  }
+  out.innerHTML = html;
+}
+
+// ============ 初始化 ============
+$("#btnStart").addEventListener("click", startCrawl);
+$("#btnStop").addEventListener("click", stopCrawl);
+$("#modalClose").addEventListener("click", () => $("#modal").classList.remove("open"));
+$("#modal").addEventListener("click", e => { if (e.target === $("#modal")) $("#modal").classList.remove("open"); });
+document.querySelectorAll("#tabs button").forEach(b =>
+  b.addEventListener("click", () => switchTab(b.dataset.tab)));
+$("#segCrawl").addEventListener("click", () => switchView("crawl"));
+$("#segTools").addEventListener("click", () => switchView("tools"));
+$("#segAntic").addEventListener("click", () => switchView("antic"));
+document.querySelectorAll(".tabs button[data-sub]").forEach(b =>
+  b.addEventListener("click", () => switchSub(b.dataset.sub)));
+$("#btnFont").addEventListener("click", runFont);
+$("#btnDecode").addEventListener("click", runDecode);
+$("#btnWater").addEventListener("click", runWater);
+$("#btnAuth").addEventListener("click", runAuth);
+$("#btnJs").addEventListener("click", runJs);
+$("#btnIp").addEventListener("click", runIp);
+$("#btnWaf").addEventListener("click", runWaf);
+$("#btnChal").addEventListener("click", runChal);
+$("#btnCap").addEventListener("click", runCap);
+$("#cfgRender").addEventListener("change", e => switchRender(e.target.value));
+
+// 使用声明：首次启动弹一次并记住；顶栏按钮可随时再看
+function openDisclaimer() { $("#disclaimer").classList.add("open"); }
+function closeDisclaimer() {
+  $("#disclaimer").classList.remove("open");
+  try { localStorage.setItem("gecko_disclaimer_ack", "1"); } catch (e) {}
+}
+$("#btnDisc").addEventListener("click", openDisclaimer);
+$("#discClose").addEventListener("click", closeDisclaimer);
+$("#disclaimer").addEventListener("click", e => { if (e.target === $("#disclaimer")) closeDisclaimer(); });
+(function () {
+  var acked = "";
+  try { acked = localStorage.getItem("gecko_disclaimer_ack") || ""; } catch (e) {}
+  if (acked !== "1") openDisclaimer();
+})();
+
+// 能力探测：没装浏览器依赖时，直接把渲染选项禁掉并给出安装命令
+(async function initCapabilities() {
+  try {
+    CAPS = await api("/api/capabilities");
+    if (CAPS.engine) { const v = document.getElementById("engVer"); if (v) v.textContent = "v" + CAPS.engine; }
+    if (!CAPS.render_available) {
+      ["dynamic", "stealthy"].forEach(v => {
+        const opt = document.querySelector(`#cfgRender option[value="${v}"]`);
+        if (opt) { opt.disabled = true; opt.textContent += "（未安装浏览器依赖）"; }
+      });
+      $("#renderHint").textContent = CAPS.render_hint || "浏览器渲染不可用";
+    }
+  } catch (e) { /* 接口不可达时保持原样，交由后端返回明确错误 */ }
+})();
+
+// 支持 #overview 这类深链接，刷新后仍停在原来的标签页
+(function initTabFromHash() {
+  const h = (location.hash || "").replace("#", "");
+  const known = ["overview", "log", "pages", "forms", "interesting", "comments", "external", "files"];
+  if (known.indexOf(h) >= 0) switchTab(h);
+  switchRender($("#cfgRender").value);
+})();
+
+refresh();
+startPoll();
+</script>
+<script>
+// 独立兜底脚本（纯 ES5，主脚本若因内核过旧解析失败，这里仍能执行）
+// ① 文档级事件委托：视图/标签页切换是幂等操作，与按钮级绑定共存无副作用；
+//    即使主脚本某处异常导致按钮级监听未挂上，三个视图仍可切换
+document.addEventListener("click", function (e) {
+  var n = e.target;
+  while (n && n !== document) {
+    var ds = n.dataset || {};
+    if (ds.seg) { if (typeof switchView === "function") switchView(ds.seg); return; }
+    if (ds.tab) { if (typeof switchTab === "function") switchTab(ds.tab); return; }
+    if (ds.sub) { if (typeof switchSub === "function") switchSub(ds.sub); return; }
+    n = n.parentNode;
+  }
+}, false);
+window.__ui_ready = true;   // 自检标记：兜底脚本执行完毕
+
+// ② 2.5 秒后若主脚本未就绪（老内核整段解析失败），给出可行动的提示
+setTimeout(function () {
+  if (!window.__ui_ready || typeof switchView !== "function") {
+    var tip = document.createElement("div");
+    tip.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:9999;background:#8a1f1f;color:#fff;padding:10px 16px;font:14px/1.6 'Microsoft YaHei',sans-serif;";
+    tip.textContent = "当前浏览器内核过旧，界面脚本未能运行（按钮会无反应）。请改用 Edge 或 Chrome 打开页面上方显示的本地地址。";
+    document.body.insertBefore(tip, document.body.firstChild);
+  }
+}, 2500);
+</script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+# Windows 批处理必须保持 CRLF，否则双击会乱码/一闪而过
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 其余文本文件按仓库规范归一化为 LF，二进制不处理
+* text=auto
+
+*.png binary
+*.ico binary
+*.zip binary
+*.docx binary

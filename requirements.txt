@@ -1,0 +1,32 @@
+# —— 基础依赖（必须有）——
+requests>=2.28
+beautifulsoup4>=4.12
+fonttools>=4.40
+pillow>=10.0
+numpy>=1.24
+brotli>=1.1
+
+# —— v4.0 结构化数据导出（没有则自动跳过对应格式，不报错）——
+openpyxl>=3.1    # 导出 XLSX；没装会跳过 XLSX，CSV / JSONL / SQLite 不受影响
+                 # 注：SQLite 导出用的是 Python 标准库 sqlite3，无需额外安装
+
+# —— 引擎可选增强（没有也能跑，只是少一项能力）——
+w3lib>=2.1       # URL 规范化：参数排序去重、避免爬虫陷阱
+lxml>=4.9        # 更快的 HTML 解析器，没有就退回内置的 html.parser
+curl_cffi>=0.7   # 浏览器 TLS/HTTP2 指纹伪装，应对 JA3/JA4 指纹检测
+
+# —— 浏览器渲染（只有用 --render 时才需要）——
+# 装完这两个包后，还要下载一次浏览器内核：
+#   python -m pip install playwright
+#   python -m playwright install chromium
+playwright>=1.40
+patchright>=1.3  # 反检测增强版：--render stealthy 优先用它，没装就自动用 playwright
+
+# —— 桌面窗口（可选）——
+pywebview>=5.0   # 用独立桌面窗口打开界面（无地址栏）；没装会自动回退到浏览器/app 窗口
+
+# —— 打包成 exe（可选，只有要重新生成 exe 时才需要）——
+pyinstaller>=6.0 # 执行 python tools/build_exe.py 生成 dist\Gecko\Gecko.exe
+
+# 说明：引擎自身只依赖 requests + beautifulsoup4（外加标准库 sqlite3 / difflib），
+# 自愈选择器（adaptive.py）与结构化提取（smart_extract.py）均为零额外依赖实现。

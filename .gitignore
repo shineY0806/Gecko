@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 打包产物（exe 体积大，不入库；需要时运行 build_exe.py 重新生成）
+dist/
+build/
+*.spec
+/*.exe
+*.zip
+
+# 爬取输出目录（以 output_ 开头）
+output_*/
+output_*
+
+# 临时/调试产物
+_e*/
+_shot_run/
+_cli_sp/
+_gui_sp/
+*.pkl
+
+# 本地配置与凭据（不要提交真实密钥）
+.env
+.env.local
+*.token
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 本地工具数据（会话记忆等，不入库）
+.workbuddy/

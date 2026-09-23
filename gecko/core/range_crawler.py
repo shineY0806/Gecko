@@ -133,7 +133,9 @@ except Exception:  # pragma: no cover
     except Exception:
         adaptive = None
 
-ENGINE_VERSION = "1.6.1"   # 1.6.1：新增媒体下载能力 media_download.py（HLS 分片合并 / 大文件断点续传 / SHA256 校验）
+ENGINE_VERSION = "1.7.0"   # 1.7.0：新增图片发现与下载（--image-scan / --image-download），
+                           # 覆盖 img / 懒加载 data-src / srcset 最大候选 / picture / CSS 背景图 / OG 图
+                           # 1.6.1：新增媒体下载能力 media_download.py（HLS 分片合并 / 大文件断点续传 / SHA256 校验）
                            # 1.6.0：新增 --media-scan 媒体源发现（m3u8 / mpd / mp4 / webm，只发现不下载）
                            # 1.5.1：修掉自愈选择器在无目标列表页面上抽出 ▼/装饰元素噪声行的问题；
                            # 1.5.0：更名 Gecko；自愈选择器 / XHR 接口捕获 / 代理轮换策略 / Markdown 导出；放开工具层目标限制
@@ -569,6 +571,7 @@ def parse_page(html_text, page_url, config):
         comments = [c.strip() for c in re.findall(r"<!--(.*?)-->", html_text, re.S) if c.strip()]
 
     media = extract_media(soup, html_text, page_url, config) if config.media_scan else []
+    images = extract_images(soup, html_text, page_url, config) if config.image_scan else []
 
     return {
         "links": links,
@@ -580,6 +583,7 @@ def parse_page(html_text, page_url, config):
         "comments": comments,
         "js_urls": js_urls,
         "media": media,
+        "images": images,
         "next_pages": list(dict.fromkeys(next_pages)),   # v1.5.0 分页线索
     }
 
@@ -660,6 +664,104 @@ def extract_media(soup, html_text, page_url, config):
         add(m.group(0), "js-inline")
     for m in MEDIA_REL_RE.finditer(html_text or ""):
         add(m.group("url"), "js-inline")
+
+    return list(found.values())
+
+
+# ---------------------------------------------------------------------------
+# v1.7.0 图片发现与下载
+# ---------------------------------------------------------------------------
+# 视频藏在 JS 里，图片则躲在懒加载属性里：首屏只给占位图，真地址放在
+# data-src / data-original 上，等滚动到视口才换过去。只认 img@src 的话，
+# 现代站点大半图片会漏掉。这里连同 srcset 多分辨率候选、<picture> 的
+# <source>、内联 CSS 背景图和 OG/Twitter 分享图一起收。
+IMG_EXT_RE = re.compile(r"\.(?:jpe?g|png|gif|webp|avif|bmp|svg|ico|tiff?)", re.I)
+IMG_LAZY_ATTRS = ("src", "data-src", "data-original", "data-lazy-src",
+                  "data-echo", "data-url", "data-image", "data-href")
+CSS_BG_RE = re.compile(r"""url\(\s*['"]?(?P<url>[^)'"]+)['"]?\s*\)""", re.I)
+
+
+def _img_kind(url):
+    """按扩展名判断图片类型：jpg / png / webp …；认不出返回 unknown。"""
+    m = IMG_EXT_RE.search(urlparse(url).path or "")
+    if not m:
+        return "unknown"
+    ext = m.group(0).lstrip(".").lower()
+    return "jpeg" if ext == "jpg" else ext
+
+
+def _srcset_best(raw):
+    """srcset 里挑尺寸最大的候选。「a.jpg 1x, b.jpg 2x, c.jpg 3x」-> c.jpg。
+
+    没有描述符时取最后一个（约定俗成把最大的放最后）。
+    """
+    parts = [p.strip() for p in (raw or "").split(",") if p.strip()]
+    if not parts:
+        return ""
+    best, best_w = parts[-1].split()[0], -1.0
+    for p in parts:
+        bits = p.split()
+        if not bits:
+            continue
+        url, w = bits[0], 0.0
+        for b in bits[1:]:
+            mm = re.match(r"([\d.]+)[xw]", b)
+            if mm:
+                w = float(mm.group(1))
+                break
+        if w >= best_w:
+            best, best_w = url, w
+    return best
+
+
+def extract_images(soup, html_text, page_url, config):
+    """从页面里识别图片地址，返回 [{url, type, source, page, title}]。"""
+    found = {}
+
+    def add(raw, where, alt=""):
+        if not raw:
+            return
+        raw = str(raw).strip().strip("'\"").replace("\\/", "/")
+        if not raw or raw.startswith("data:"):
+            return                      # 内联 base64 图不值得单独记地址
+        norm = normalize_url(raw, page_url, config.ignore_params)
+        if not norm:
+            return
+        if not IMG_EXT_RE.search(urlparse(norm).path or ""):
+            return
+        cur = found.get(norm)
+        if cur is None:
+            found[norm] = {"url": norm, "type": _img_kind(norm),
+                           "source": where, "page": page_url,
+                           "title": (alt or "")[:120]}
+        else:
+            if where not in cur["source"]:
+                cur["source"] = cur["source"] + "," + where
+            if alt and not cur["title"]:
+                cur["title"] = alt[:120]
+
+    for tag in soup.find_all("img"):
+        alt = tag.get("alt") or ""
+        for attr in IMG_LAZY_ATTRS:
+            add(tag.get(attr), "img@" + attr, alt)
+        ss = tag.get("srcset") or tag.get("data-srcset")
+        if ss:
+            add(_srcset_best(ss), "img@srcset", alt)
+
+    # <picture><source srcset="...">：响应式多格式回退
+    for tag in soup.find_all("source"):
+        ss = tag.get("srcset") or tag.get("data-srcset")
+        if ss:
+            add(_srcset_best(ss), "source@srcset")
+
+    # OG / Twitter 分享图：不少站只在 meta 里给大图
+    for meta in soup.find_all("meta"):
+        key = (meta.get("property") or meta.get("name") or "").lower()
+        if key in ("og:image", "og:image:url", "twitter:image", "twitter:image:src"):
+            add(meta.get("content"), "meta@" + key)
+
+    for m in CSS_BG_RE.finditer(html_text or ""):
+        add(m.group("url"), "css-bg")
 
     return list(found.values())
 
@@ -745,6 +847,10 @@ class Config:
     media_download: bool = False   # v1.6.1 把发现的媒体源真正下载回来（默认关，见 media_download.py）
     media_dir: str = ""            # 媒体保存目录，空=输出目录下的 media/
     media_max_mb: int = 0          # 单文件体积上限（MB），0=不限
+    image_scan: bool = False       # v1.7.0 图片发现：识别页面里的图片地址（images.csv）
+    image_download: bool = False   # v1.7.0 把发现的图片下载回来（默认关）
+    image_dir: str = ""            # 图片保存目录，空=输出目录下的 images/
+    image_max_mb: int = 0          # 单张图片体积上限（MB），0=不限
     export: list = field(default_factory=list)   # 导出格式: csv/jsonl/sqlite/xlsx
     dedup: bool = False            # 正文 SHA1 去重：内容相同的页面只入库一次
     pager: int = 0                 # 分页自动扩展层数（0=关闭）：顺着 rel=next / 页码参数多抓 N 页
@@ -1090,6 +1196,10 @@ def build_config(src):
         media_download=flag("media_download", False),
         media_dir=str(src.get("media_dir") or "").strip(),
         media_max_mb=int(_num(src.get("media_max_mb"), 0, 0, 1000000)),
+        image_scan=flag("image_scan", False),
+        image_download=flag("image_download", False),
+        image_dir=str(src.get("image_dir") or "").strip(),
+        image_max_mb=int(_num(src.get("image_max_mb"), 0, 0, 1000000)),
         export=_parse_export(src.get("export")),
         dedup=flag("dedup", False),
         pager=int(_num(src.get("pager"), 0, 0, 200)),
@@ -1953,6 +2063,7 @@ class RangeCrawler:
         self.pages = []            # 已成功抓取的页面记录
         self.forms = []            # 发现的表单
         self.media = []            # v1.6.0 发现的媒体源（m3u8 / mpd / mp4 / webm…）
+        self.images = []           # v1.7.0 发现的图片地址
         self.assets = {"scripts": set(), "styles": set(), "frames": set()}
         self.misc_links = []       # canonical / icon / manifest 等
         self.comments = []         # (page, comment)
@@ -1976,6 +2087,8 @@ class RangeCrawler:
             "structured": 0, "duplicates": 0, "not_modified": 0, "tables": 0,
             "media": 0,    # v1.6.0 媒体源发现条数
             "media_downloaded": 0,   # v1.6.1 实际下载成功的媒体数
+            "images": 0,             # v1.7.0 图片发现条数
+            "images_downloaded": 0,  # v1.7.0 实际下载成功的图片数
             # v1.5.0
             "healed": 0,   # 自愈选择器重定位成功的次数
             "xhr": 0,      # 渲染模式捕获到的后台接口条数
@@ -2397,6 +2510,9 @@ class RangeCrawler:
                 for m in parsed.get("media", []):
                     self.media.append(m)
                     events.append({"type": "media", "media": m})
+                for im in parsed.get("images", []):
+                    self.images.append(im)
+                    events.append({"type": "image", "image": im})
                 self.assets["scripts"].update(parsed["scripts"])
                 self.assets["styles"].update(parsed["styles"])
                 self.assets["frames"].update(parsed["frames"])
@@ -2700,6 +2816,27 @@ class RangeCrawler:
                 cur["count"] += 1
         self.media = sorted(merged_media.values(), key=lambda x: (x["type"], x["url"]))
         self.stats["media"] = len(self.media)
+
+        # v1.7.0 图片：同一地址被多页/多写法命中时合并成一行
+        merged_images = {}
+        for im in self.images:
+            cur = merged_images.get(im["url"])
+            if cur is None:
+                cur = dict(im)
+                cur["pages"] = [im["page"]]
+                cur["count"] = 1
+                merged_images[im["url"]] = cur
+            else:
+                for s in (im["source"] or "").split(","):
+                    if s and s not in cur["source"]:
+                        cur["source"] = cur["source"] + "," + s
+                if im["page"] not in cur["pages"]:
+                    cur["pages"].append(im["page"])
+                if im["title"] and not cur["title"]:
+                    cur["title"] = im["title"]
+                cur["count"] += 1
+        self.images = sorted(merged_images.values(), key=lambda x: (x["type"], x["url"]))
+        self.stats["images"] = len(self.images)
         self.stats["js_urls"] = self.js_url_count
         self.stats["cache_hits"] = self.fetcher.cache.hits
         self.stats["rendered"] = self.fetcher.renderer.rendered
@@ -2859,6 +2996,7 @@ class RangeCrawler:
             "pages": self.pages,
             "forms": self.forms,
             "media": self.media,
+            "images": self.images,
             "assets": {k: sorted(v) for k, v in self.assets.items()},
             "meta_links": self.misc_links,
             "comments": [{"page": p, "comment": c} for p, c in self.comments],
@@ -2921,6 +3059,44 @@ class RangeCrawler:
                     for r in bad:
                         log("  失败 %s -> %s" % (r["url"][:70], r["error"]), "WARN")
                     self.stats["media_downloaded"] = len(ok)
+
+        # images.csv / images.json（v1.7.0）：发现的图片清单
+        if self.images:
+            with open(os.path.join(self.config.output_dir, "images.csv"), "w",
+                      encoding="utf-8-sig", newline="") as fh:
+                writer = csv.writer(fh)
+                writer.writerow(["类型", "图片地址", "来源页面", "发现方式", "说明文字", "命中次数"])
+                for im in self.images:
+                    writer.writerow([im["type"], im["url"], ";".join(im["pages"]),
+                                     im["source"], im["title"], im["count"]])
+            with open(os.path.join(self.config.output_dir, "images.json"), "w",
+                      encoding="utf-8") as fh:
+                json.dump(self.images, fh, ensure_ascii=False, indent=2)
+
+            if self.config.image_download:
+                try:
+                    import media_download
+                except Exception as exc:
+                    log("图片下载模块不可用（%s），跳过下载" % exc, "WARN")
+                else:
+                    outdir = self.config.image_dir or os.path.join(
+                        self.config.output_dir, "images")
+                    log("开始下载 %d 张图片 -> %s" % (len(self.images), outdir), "INFO")
+                    ok, bad = media_download.fetch_many(
+                        [im["url"] for im in self.images], outdir,
+                        max_mb=self.config.image_max_mb,
+                        verify=self.config.verify,
+                        timeout=max(self.config.timeout, 30),
+                        retries=self.config.retries)
+                    for r in ok:
+                        log("  已下载 %s %.1f KB%s" % (
+                            os.path.basename(r["path"]), r["bytes"] / 1024.0,
+                            "（续传完成）" if r["resumed"] else ""), "INFO")
+                    for r in bad[:10]:
+                        log("  失败 %s -> %s" % (r["url"][:70], r["error"]), "WARN")
+                    if len(bad) > 10:
+                        log("  … 另有 %d 张失败" % (len(bad) - 10), "WARN")
+                    self.stats["images_downloaded"] = len(ok)
 
         # interesting.txt
         with open(os.path.join(self.config.output_dir, "interesting.txt"), "w", encoding="utf-8") as fh:
@@ -3075,6 +3251,10 @@ class RangeCrawler:
         log(f"发现表单: {s.get('forms', 0)}", "INFO")
         if self.media:
             log(f"发现媒体源: {s.get('media', 0)}（详见 media.csv）", "INFO")
+        if self.images:
+            log(f"发现图片: {s.get('images', 0)}"
+                + (f"，已下载 {s.get('images_downloaded', 0)}" if s.get("images_downloaded") else "")
+                + "（详见 images.csv）", "INFO")
         log(f"HTTP 2xx/3xx/4xx/5xx: {s.get('http_2xx', 0)}/{s.get('http_3xx', 0)}/"
             f"{s.get('http_4xx', 0)}/{s.get('http_5xx', 0)}", "INFO")
         log(f"请求错误: {s.get('errors', 0)}", "INFO")
@@ -3210,6 +3390,15 @@ def build_parser():
                     help="媒体保存目录，默认 <输出目录>/media")
     g4.add_argument("--media-max-mb", type=int, default=0, metavar="N",
                     help="单个媒体文件体积上限（MB），0=不限")
+    g4.add_argument("--image-scan", action="store_true",
+                    help="图片发现：识别页面里的图片地址（img / 懒加载 data-src / srcset / "
+                         "picture / CSS 背景图 / OG 图），只做发现不下载，产出 images.csv 与 images.json")
+    g4.add_argument("--image-download", action="store_true",
+                    help="把 --image-scan 发现的图片下载回来（流式写盘、断点续传；默认关）")
+    g4.add_argument("--image-dir", default="", metavar="DIR",
+                    help="图片保存目录，默认 <输出目录>/images")
+    g4.add_argument("--image-max-mb", type=int, default=0, metavar="N",
+                    help="单张图片体积上限（MB），0=不限")
     g4.add_argument("--export", default="", metavar="FORMATS",
                     help="导出格式，逗号分隔：csv / jsonl / sqlite / xlsx。"
                          "含 sqlite 时边跑边落盘，爬十万页也不撑内存")
@@ -3297,6 +3486,10 @@ def main(argv=None):
         "media_download": args.media_download,
         "media_dir": args.media_dir,
         "media_max_mb": args.media_max_mb,
+        "image_scan": args.image_scan,
+        "image_download": args.image_download,
+        "image_dir": args.image_dir,
+        "image_max_mb": args.image_max_mb,
         "export": args.export,
         "pager": args.pager,
         "incremental": args.incremental,

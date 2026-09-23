@@ -520,6 +520,8 @@ details.group > .groupbody { padding: 12px; }
           <label class="check"><input type="checkbox" id="cfgExtract"> 结构化提取（JSON-LD / Microdata / OpenGraph / 电话邮箱）</label>
           <label class="check"><input type="checkbox" id="cfgExtractTables"> 附带导出页面里的表格明细</label>
           <label class="check"><input type="checkbox" id="cfgMediaScan"> 媒体源发现（m3u8 / mpd / mp4…，只发现不下载）</label>
+          <label class="check"><input type="checkbox" id="cfgImageScan"> 图片发现（img / 懒加载 / srcset / 背景图，只发现不下载）</label>
+          <label class="check"><input type="checkbox" id="cfgImageDownload"> 把发现的图片下载回来（默认关）</label>
           <label class="check"><input type="checkbox" id="cfgDedup"> 正文去重（内容相同的页只入库一次）</label>
           <label class="check"><input type="checkbox" id="cfgIncremental"> 增量抓取（页面没变就跳过）</label>
         </div>
@@ -1213,6 +1215,8 @@ function collectConfig() {
     extract: $("#cfgExtract").checked,
     extract_tables: $("#cfgExtractTables").checked,
     media_scan: $("#cfgMediaScan").checked,
+    image_scan: $("#cfgImageScan").checked,
+    image_download: $("#cfgImageDownload").checked,
     dedup: $("#cfgDedup").checked,
     incremental: $("#cfgIncremental").checked,
     rotate_ua: $("#cfgRotateUa").checked,

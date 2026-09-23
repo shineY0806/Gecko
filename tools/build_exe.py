@@ -39,6 +39,7 @@ HIDDEN_IMPORTS = [
     "webview",        # pywebview 桌面窗口
     "smart_extract",  # 结构化提取与多格式导出（range_crawler 里是 try import）
     "adaptive",       # v1.5.0 自愈选择器（同样是 try import）
+    "media_download",  # v1.6.1 媒体下载（HLS 合并 / 大文件续传，同样是 try import）
     "openpyxl",       # XLSX 导出；缺失时导出器自动降级跳过 XLSX
 ]
 

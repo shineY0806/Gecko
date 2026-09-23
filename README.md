@@ -6,9 +6,9 @@
 
 <sub>新手练手项目 · 在 AI 助手协助下完成 · 代码有不成熟之处，多多见谅，欢迎指正</sub>
 
-<kbd>版本 v1.6.0</kbd> <kbd>MIT 许可</kbd> <kbd>Python 3.9+</kbd> <kbd>Windows 可执行版</kbd>
+<kbd>版本 v1.6.1</kbd> <kbd>MIT 许可</kbd> <kbd>Python 3.9+</kbd> <kbd>Windows 可执行版</kbd>
 
-[ **下载 Gecko_v1.6.0_Windows_x64.zip** ](https://github.com/shineY0806/Gecko/releases/latest/download/Gecko_v1.6.0_Windows_x64.zip) · [ 全部版本 ](https://github.com/shineY0806/Gecko/releases) · [ 使用说明 ](docs/使用说明.md)
+[ **下载 Gecko_v1.6.1_Windows_x64.zip** ](https://github.com/shineY0806/Gecko/releases/latest/download/Gecko_v1.6.1_Windows_x64.zip) · [ 全部版本 ](https://github.com/shineY0806/Gecko/releases) · [ 使用说明 ](docs/使用说明.md)
 
 </div>
 
@@ -18,7 +18,7 @@
 
 Windows 用户直接下这个，解压后双击 `Gecko.exe` 就能用，**不需要装 Python**：
 
-> 👉 [Gecko_v1.6.0_Windows_x64.zip](https://github.com/shineY0806/Gecko/releases/latest/download/Gecko_v1.6.0_Windows_x64.zip)（30 MB）
+> 👉 [Gecko_v1.6.1_Windows_x64.zip](https://github.com/shineY0806/Gecko/releases/latest/download/Gecko_v1.6.1_Windows_x64.zip)（30 MB）
 > 全部版本见 [Releases](https://github.com/shineY0806/Gecko/releases)
 
 ---
@@ -89,6 +89,7 @@ python tools/build_exe.py          # 产物在 dist/Gecko/
 
 | 版本 | 说明 |
 |---|---|
+| v1.6.1 | 新增媒体下载能力（`--media-download`）：HLS 分片流自动解析 m3u8 → 并发拉分片 → 合并 mp4；直链大文件走流式写盘 + 断点续传 + SHA256 校验。1GB 实测内存恒定 60MB |
 | v1.6.0 | 新增 `--media-scan` 媒体源发现：识别页面里的 m3u8 / mpd / mp4 / webm 等视频音频地址，产出 `media.csv` / `media.json`。**只做发现、不做下载**，拿地址后用什么工具下由使用者决定 |
 | v1.5.1 | 修掉自愈选择器在「页面没有目标列表」时把 ▼、箭头、分隔条等装饰元素当成记录抽出的问题；逐条模式抽不到不再回退整页凑数 |
 | v1.5.0 | 更名 Gecko；自愈选择器、XHR 接口捕获、代理轮换、Markdown 导出；放开工具层目标限制；修掉分页死锁与 `--pager` 失效 |

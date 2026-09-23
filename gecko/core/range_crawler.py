@@ -133,7 +133,8 @@ except Exception:  # pragma: no cover
     except Exception:
         adaptive = None
 
-ENGINE_VERSION = "1.6.0"   # 1.6.0：新增 --media-scan 媒体源发现（m3u8 / mpd / mp4 / webm，只发现不下载）
+ENGINE_VERSION = "1.6.1"   # 1.6.1：新增媒体下载能力 media_download.py（HLS 分片合并 / 大文件断点续传 / SHA256 校验）
+                           # 1.6.0：新增 --media-scan 媒体源发现（m3u8 / mpd / mp4 / webm，只发现不下载）
                            # 1.5.1：修掉自愈选择器在无目标列表页面上抽出 ▼/装饰元素噪声行的问题；
                            # 1.5.0：更名 Gecko；自愈选择器 / XHR 接口捕获 / 代理轮换策略 / Markdown 导出；放开工具层目标限制
 
@@ -741,6 +742,9 @@ class Config:
     extract: bool = False          # 结构化提取（JSON-LD / Microdata / Meta / 表格 / 联系方式）
     extract_tables: bool = False   # 额外把 <table> 明细导出（tables.csv / data.db）
     media_scan: bool = False       # v1.6.0 媒体源发现：识别页面里的 m3u8/mp4/dash 地址（media.csv）
+    media_download: bool = False   # v1.6.1 把发现的媒体源真正下载回来（默认关，见 media_download.py）
+    media_dir: str = ""            # 媒体保存目录，空=输出目录下的 media/
+    media_max_mb: int = 0          # 单文件体积上限（MB），0=不限
     export: list = field(default_factory=list)   # 导出格式: csv/jsonl/sqlite/xlsx
     dedup: bool = False            # 正文 SHA1 去重：内容相同的页面只入库一次
     pager: int = 0                 # 分页自动扩展层数（0=关闭）：顺着 rel=next / 页码参数多抓 N 页
@@ -1083,6 +1087,9 @@ def build_config(src):
         extract=flag("extract", False),
         extract_tables=flag("extract_tables", False),
         media_scan=flag("media_scan", False),
+        media_download=flag("media_download", False),
+        media_dir=str(src.get("media_dir") or "").strip(),
+        media_max_mb=int(_num(src.get("media_max_mb"), 0, 0, 1000000)),
         export=_parse_export(src.get("export")),
         dedup=flag("dedup", False),
         pager=int(_num(src.get("pager"), 0, 0, 200)),
@@ -1968,6 +1975,7 @@ class RangeCrawler:
             "cache_hits": 0, "rendered": 0, "items": 0, "challenged": 0,
             "structured": 0, "duplicates": 0, "not_modified": 0, "tables": 0,
             "media": 0,    # v1.6.0 媒体源发现条数
+            "media_downloaded": 0,   # v1.6.1 实际下载成功的媒体数
             # v1.5.0
             "healed": 0,   # 自愈选择器重定位成功的次数
             "xhr": 0,      # 渲染模式捕获到的后台接口条数
@@ -2890,6 +2898,30 @@ class RangeCrawler:
                       encoding="utf-8") as fh:
                 json.dump(self.media, fh, ensure_ascii=False, indent=2)
 
+            # v1.6.1：可选把源下载回来。默认关——能否下载取决于你对该内容是否有合法权利。
+            if self.config.media_download:
+                try:
+                    import media_download
+                except Exception as exc:
+                    log("媒体下载模块不可用（%s），跳过下载" % exc, "WARN")
+                else:
+                    outdir = self.config.media_dir or os.path.join(
+                        self.config.output_dir, "media")
+                    log("开始下载 %d 个媒体源 -> %s" % (len(self.media), outdir), "INFO")
+                    ok, bad = media_download.fetch_many(
+                        [m["url"] for m in self.media], outdir,
+                        max_mb=self.config.media_max_mb,
+                        verify=self.config.verify,
+                        timeout=max(self.config.timeout, 30),
+                        retries=self.config.retries)
+                    for r in ok:
+                        log("  已下载 %s %.1f MB%s" % (
+                            os.path.basename(r["path"]), r["bytes"] / 1048576.0,
+                            "（续传完成）" if r["resumed"] else ""), "INFO")
+                    for r in bad:
+                        log("  失败 %s -> %s" % (r["url"][:70], r["error"]), "WARN")
+                    self.stats["media_downloaded"] = len(ok)
+
         # interesting.txt
         with open(os.path.join(self.config.output_dir, "interesting.txt"), "w", encoding="utf-8") as fh:
             fh.write("\n".join(self.interesting) + "\n")
@@ -3171,6 +3203,13 @@ def build_parser():
     g4.add_argument("--media-scan", action="store_true",
                     help="媒体源发现：识别页面里的视频/音频地址（m3u8 / mpd / mp4 / webm…），"
                          "只做发现不下载，产出 media.csv 与 media.json")
+    g4.add_argument("--media-download", action="store_true",
+                    help="把 --media-scan 发现的媒体源下载回来（大文件安全：流式写盘、"
+                         "断点续传、SHA256 校验；默认关）")
+    g4.add_argument("--media-dir", default="", metavar="DIR",
+                    help="媒体保存目录，默认 <输出目录>/media")
+    g4.add_argument("--media-max-mb", type=int, default=0, metavar="N",
+                    help="单个媒体文件体积上限（MB），0=不限")
     g4.add_argument("--export", default="", metavar="FORMATS",
                     help="导出格式，逗号分隔：csv / jsonl / sqlite / xlsx。"
                          "含 sqlite 时边跑边落盘，爬十万页也不撑内存")
@@ -3255,6 +3294,9 @@ def main(argv=None):
         "extract": args.extract,
         "extract_tables": args.extract_tables,
         "media_scan": args.media_scan,
+        "media_download": args.media_download,
+        "media_dir": args.media_dir,
+        "media_max_mb": args.media_max_mb,
         "export": args.export,
         "pager": args.pager,
         "incremental": args.incremental,
